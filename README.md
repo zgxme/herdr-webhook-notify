@@ -1,5 +1,3 @@
-<div align="center">
-
 # herdr-webhook-notify
 
 [![CI](https://github.com/zgxme/herdr-webhook-notify/actions/workflows/ci.yml/badge.svg)](https://github.com/zgxme/herdr-webhook-notify/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml) [![Platforms](https://img.shields.io/badge/platform-linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](herdr-plugin.toml) [![Herdr plugin](https://img.shields.io/badge/Herdr-plugin-6E56CF.svg)](https://herdr.dev/plugins/) [![Providers](https://img.shields.io/badge/providers-11-2EB67D.svg)](#providers)
@@ -9,8 +7,6 @@ webhook service you already use: Slack, Discord, Microsoft Teams, Google Chat,
 Feishu, Lark, DingTalk, WeCom, Telegram, ntfy, or any custom HTTP endpoint.
 
 [中文说明](README.zh-CN.md) | [Provider guides](docs/providers.md) | [Contributing](CONTRIBUTING.md)
-
-</div>
 
 ```
 herdr plugin install zgxme/herdr-webhook-notify
@@ -154,14 +150,97 @@ events = ["blocked"]                 # optional per-provider override
 language = "en"                      # optional per-provider language
 ```
 
+### Top level
+
+| key | type | default | meaning |
+| --- | --- | --- | --- |
+| `language` | string | `"en"` | Language of the built-in text: `en` or `zh-CN`. Can be overridden per provider. Any unknown value is a startup error, so typos fail loudly. |
+
+### `[notify]`
+
+| key | type | default | meaning |
+| --- | --- | --- | --- |
+| `events` | list | `["done", "blocked", "unknown", "exited"]` | Kinds allowed to notify. `done` covers both background completions and completions that happened while you watched the pane. |
+| `notify_when_focused` | bool | `true` | `true` also notifies for the pane you are looking at; `false` mirrors Herdr and stays quiet for it. |
+| `min_turn_seconds` | number | `0` | Ignore turns shorter than this many seconds. `0` disables the check. Applies to `done`, `blocked` and `unknown`. |
+| `cooldown_seconds` | number | `5` | Suppress another notification for the same pane and kind inside this window; it also collapses the "status change" plus "pane exit" pair into one message. `0` disables. |
+| `quiet_hours` | list of `"HH:MM-HH:MM"` | `[]` | Local-time silent window; overnight ranges like `22:00-08:00` work. |
+| `quiet_hours_exempt` | list | `["blocked"]` | Kinds that ignore `quiet_hours`, so approval requests still reach you at night. |
+| `include_workspaces` | list of globs | `[]` | Only notify for these workspace labels, e.g. `["external-*"]`. Empty means all. |
+| `exclude_workspaces` | list of globs | `[]` | Never notify for these workspace labels. Exclude wins over include. |
+| `include_tabs` / `exclude_tabs` | list of globs | `[]` | Same rules, matched against the tab label or number. |
+| `include_agents` / `exclude_agents` | list of globs | `[]` | Same rules, matched against the agent kind (`codex`, `claude`, `gemini`, ...). |
+
+Globs are case-insensitive and use `*`/`?` wildcards.
+
+### `[http]`
+
+| key | type | default | meaning |
+| --- | --- | --- | --- |
+| `timeout_seconds` | number | `5` | Per-request timeout, minimum `0.1`. |
+| `retries` | integer | `1` | Extra attempts on network errors and `408/425/429/5xx`. `0` means a single attempt. |
+
+### `[message]` and `[messages]`
+
+| key | type | default | meaning |
+| --- | --- | --- | --- |
+| `message.title` | string | localized | Template for the notification title. |
+| `message.body` | string | localized | Template for the message body; multi-line TOML strings are fine. |
+| `messages."status.done"` | string | built-in | Replace one built-in string. Available keys: `status.done`, `status.blocked`, `status.unknown`, `status.exited`, `status.test`, `title`, `body`. Quote the key in TOML because of the dot. |
+
+### `[providers.<name>]`
+
+Every provider accepts these three keys:
+
+| key | type | default | meaning |
+| --- | --- | --- | --- |
+| `enabled` | bool | `false` | Turn this provider on. A disabled provider is not validated. |
+| `events` | list | inherit | Optional per-provider subset, e.g. `["blocked"]` to only get approvals in Slack. |
+| `language` | string | inherit | Optional per-provider language, useful when your team chats mix languages. |
+
+| provider | required | optional |
+| --- | --- | --- |
+| `feishu` | `webhook_url` | `secret` (signature), `format` (`card`/`text`, default `card`), `card_title_prefix` |
+| `lark` | `webhook_url` | same as `feishu` |
+| `dingtalk` | `webhook_url` | `secret` (signature) |
+| `wecom` | `key` or `webhook_url` | `base_url` |
+| `slack` | `webhook_url` | - |
+| `discord` | `webhook_url` | `username`, `avatar_url`, `content` (for mentions) |
+| `teams` | `webhook_url` | - |
+| `google_chat` | `webhook_url` | `thread_key` |
+| `telegram` | `bot_token`, `chat_id` | `parse_mode` (`HTML`/`MarkdownV2`), `message_thread_id`, `disable_notification`, `api_base` |
+| `ntfy` | `topic` | `url`, `token`, `priority`, `tags`, `click` |
+| `generic` | `url` | `method` (`POST`/`PUT`/`PATCH`), `headers`, `body` (template), `content_type`, `flavor` (`markdown`/`slack`/`plain`) |
+
+How to obtain each webhook is documented in [docs/providers.md](docs/providers.md).
+
 ### Placeholders
 
-`{status}`, `{status_label}`, `{kind}`, `{session}`, `{workspace}`,
-`{workspace_id}`, `{tab}`, `{tab_id}`, `{task}`, `{agent}`, `{pane_id}`,
-`{cwd}`, `{branch}`, `{duration}`, `{duration_seconds}`, `{host}`, `{time}`.
+Use these in `message.title`, `message.body` and in `generic`'s `body` template:
 
-Unknown placeholders are left as-is; lines whose only value is empty are
-removed, so optional fields like `{branch}` do not leave dangling labels.
+| placeholder | meaning |
+| --- | --- |
+| `{status}` | Raw Herdr status of the event: `done`, `idle`, `blocked`, `unknown` or `exited`. A completion you watched arrives as `idle`. |
+| `{status_label}` | Localized label of the notification kind, e.g. `Task finished`. |
+| `{kind}` | Normalized kind: `done`, `blocked`, `unknown`, `exited` or `test`. |
+| `{session}` | Herdr session name, `default` for the default session. |
+| `{workspace}` | Workspace label, e.g. `external-fuzzer`; falls back to the workspace id. |
+| `{workspace_id}` | Workspace id, e.g. `wD`. |
+| `{tab}` | Tab label or number, e.g. `2`. |
+| `{tab_id}` | Tab id, e.g. `wD:t2`. |
+| `{task}` | Task summary: the pane terminal title, which agents set to their conversation title. Falls back to the pane id. |
+| `{agent}` | Detected agent kind, e.g. `codex`, `claude`, `gemini`. |
+| `{pane_id}` | Pane id, e.g. `wD:p1`. |
+| `{cwd}` | Working directory of the pane. |
+| `{branch}` | Current git branch of `{cwd}`; empty outside a repository. |
+| `{duration}` | Turn duration, human formatted, e.g. `2m05s`; empty when unknown. |
+| `{duration_seconds}` | The same duration as a raw number of seconds, for custom formatting. |
+| `{host}` | Hostname of the machine running Herdr. |
+| `{time}` | Local timestamp, `YYYY-MM-DD HH:MM:SS`. |
+
+Unknown placeholders are kept as-is, so typos are visible instead of silently
+disappearing. Lines whose only value resolves to empty are dropped, which is
+why optional fields such as `{branch}` do not leave a dangling label.
 
 ### Language
 

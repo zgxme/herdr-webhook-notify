@@ -1,5 +1,3 @@
-<div align="center">
-
 # herdr-webhook-notify
 
 [![CI](https://github.com/zgxme/herdr-webhook-notify/actions/workflows/ci.yml/badge.svg)](https://github.com/zgxme/herdr-webhook-notify/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml) [![Herdr plugin](https://img.shields.io/badge/Herdr-plugin-6E56CF.svg)](https://herdr.dev/plugins/) [![Providers](https://img.shields.io/badge/providers-11-2EB67D.svg)](#支持的服务商)
@@ -9,8 +7,6 @@ Lark、企业微信、Slack、Discord、Microsoft Teams、Google Chat、Telegram
 或者任意自定义 HTTP 接口。
 
 [English](README.md) | [服务商配置指南](docs/providers.md) | [参与贡献](CONTRIBUTING.md)
-
-</div>
 
 ```
 herdr plugin install zgxme/herdr-webhook-notify
@@ -123,10 +119,96 @@ language = "en"                      # 可单独覆盖语言
 events = ["blocked"]                 # 可单独覆盖事件范围
 ```
 
-可用占位符：`{status}`、`{status_label}`、`{kind}`、`{session}`、`{workspace}`、
-`{workspace_id}`、`{tab}`、`{tab_id}`、`{task}`、`{agent}`、`{pane_id}`、`{cwd}`、
-`{branch}`、`{duration}`、`{duration_seconds}`、`{host}`、`{time}`。未知占位符会原样
-保留；值为空的行会自动删除，所以像 `{branch}` 这种可选字段不会留下空标签。
+### 顶层配置
+
+| 配置项 | 类型 | 默认值 | 含义 |
+| --- | --- | --- | --- |
+| `language` | 字符串 | `"en"` | 内置文案语言，可选 `en` 或 `zh-CN`；单个 provider 可以再覆盖。填错会直接报错，不会静默回退。 |
+
+### `[notify]` 通知范围
+
+| 配置项 | 类型 | 默认值 | 含义 |
+| --- | --- | --- | --- |
+| `events` | 列表 | `["done", "blocked", "unknown", "exited"]` | 允许通知的类型。`done` 同时覆盖"后台完成"和"你正盯着时完成"两种情况。 |
+| `notify_when_focused` | 布尔 | `true` | `true` 表示你正看着那个 pane 完成时也通知；`false` 则跟 Herdr 原生行为一致，只看后台。 |
+| `min_turn_seconds` | 数字 | `0` | 短于该秒数的 turn 不通知，`0` 表示不限制；只对 `done`/`blocked`/`unknown` 生效。 |
+| `cooldown_seconds` | 数字 | `5` | 同一 pane 同一类型的通知在该时间窗内去重，同时把"状态变化 + pane 退出"合并成一条；`0` 表示不去重。 |
+| `quiet_hours` | 列表 | `[]` | 本地时间的免打扰区间，如 `["22:00-08:00"]`，支持跨天。 |
+| `quiet_hours_exempt` | 列表 | `["blocked"]` | 免打扰期间仍然通知的类型，默认让审批/提问能吵醒你。 |
+| `include_workspaces` | 通配列表 | `[]` | 只通知匹配的工作区名，如 `["external-*"]`；空表示全部。 |
+| `exclude_workspaces` | 通配列表 | `[]` | 这些工作区永不通知；排除优先于包含。 |
+| `include_tabs` / `exclude_tabs` | 通配列表 | `[]` | 同上，匹配 tab 的标签或编号。 |
+| `include_agents` / `exclude_agents` | 通配列表 | `[]` | 同上，匹配 agent 类型（`codex`、`claude`、`gemini` 等）。 |
+
+通配匹配大小写不敏感，支持 `*` 和 `?`。
+
+### `[http]` 投递参数
+
+| 配置项 | 类型 | 默认值 | 含义 |
+| --- | --- | --- | --- |
+| `timeout_seconds` | 数字 | `5` | 单次请求超时，最小 `0.1`。 |
+| `retries` | 整数 | `1` | 网络错误和 `408/425/429/5xx` 的额外重试次数，`0` 表示只发一次。 |
+
+### `[message]` 与 `[messages]` 文案
+
+| 配置项 | 类型 | 默认值 | 含义 |
+| --- | --- | --- | --- |
+| `message.title` | 字符串 | 按语言内置 | 通知标题模板。 |
+| `message.body` | 字符串 | 按语言内置 | 消息正文模板，可以用 TOML 多行字符串。 |
+| `messages."status.done"` | 字符串 | 内置 | 覆盖单条内置文案。可用键：`status.done`、`status.blocked`、`status.unknown`、`status.exited`、`status.test`、`title`、`body`。因为含点号，TOML 里必须加引号。 |
+
+### `[providers.<名字>]` 服务商
+
+所有服务商都支持这三个键：
+
+| 配置项 | 类型 | 默认值 | 含义 |
+| --- | --- | --- | --- |
+| `enabled` | 布尔 | `false` | 是否启用；未启用的 provider 不会做参数校验。 |
+| `events` | 列表 | 继承全局 | 单独收窄范围，例如 Slack 只收 `["blocked"]`。 |
+| `language` | 字符串 | 继承全局 | 单独指定语言，适合团队里中英混用的场景。 |
+
+| 服务商 | 必填 | 可选 |
+| --- | --- | --- |
+| `feishu` | `webhook_url` | `secret`（签名）、`format`（`card`/`text`，默认 `card`）、`card_title_prefix` |
+| `lark` | `webhook_url` | 同 `feishu` |
+| `dingtalk` | `webhook_url` | `secret`（加签） |
+| `wecom` | `key` 或 `webhook_url` | `base_url` |
+| `slack` | `webhook_url` | - |
+| `discord` | `webhook_url` | `username`、`avatar_url`、`content`（用于 @ 提醒） |
+| `teams` | `webhook_url` | - |
+| `google_chat` | `webhook_url` | `thread_key` |
+| `telegram` | `bot_token`、`chat_id` | `parse_mode`（`HTML`/`MarkdownV2`）、`message_thread_id`、`disable_notification`、`api_base` |
+| `ntfy` | `topic` | `url`、`token`、`priority`、`tags`、`click` |
+| `generic` | `url` | `method`（`POST`/`PUT`/`PATCH`）、`headers`、`body`（模板）、`content_type`、`flavor`（`markdown`/`slack`/`plain`） |
+
+各服务商怎么申请 webhook 见 [docs/providers.md](docs/providers.md)。
+
+### 可用占位符
+
+在 `message.title`、`message.body` 以及 `generic` 的 `body` 模板里都可以用：
+
+| 占位符 | 含义 |
+| --- | --- |
+| `{status}` | 事件里 Herdr 的原始状态：`done`、`idle`、`blocked`、`unknown`、`exited`。你正盯着看时完成，这里会是 `idle`。 |
+| `{status_label}` | 该类型本地化后的文案，例如 `任务完成`。 |
+| `{kind}` | 归一化后的类型：`done`、`blocked`、`unknown`、`exited`、`test`。 |
+| `{session}` | Herdr 会话名，默认会话显示 `default`。 |
+| `{workspace}` | 工作区名称，例如 `external-fuzzer`；取不到时退回 workspace id。 |
+| `{workspace_id}` | 工作区 id，例如 `wD`。 |
+| `{tab}` | Tab 的标签或编号，例如 `2`。 |
+| `{tab_id}` | Tab id，例如 `wD:t2`。 |
+| `{task}` | 任务概括：pane 的终端标题，agent 会把会话标题写在这里；取不到时退回 pane id。 |
+| `{agent}` | 检测到的 agent 类型，例如 `codex`、`claude`、`gemini`。 |
+| `{pane_id}` | Pane id，例如 `wD:p1`。 |
+| `{cwd}` | 该 pane 的工作目录。 |
+| `{branch}` | `{cwd}` 所在的 git 分支，不在仓库里时为空。 |
+| `{duration}` | 本轮耗时，格式化后如 `2m05s`；未知时为空。 |
+| `{duration_seconds}` | 同样的耗时，纯秒数，方便自己格式化。 |
+| `{host}` | 运行 Herdr 的机器名。 |
+| `{time}` | 本地时间，格式 `YYYY-MM-DD HH:MM:SS`。 |
+
+未知占位符会原样保留，写错能立刻看出来；整行只有空值的会被自动删掉，所以像 `{branch}`
+这种可选字段不会留下空标签。
 
 ## 支持的服务商
 
