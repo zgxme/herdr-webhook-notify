@@ -1,0 +1,45 @@
+id = "herdr-webhook-notify"
+name = "Webhook Notify"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Send agent notifications to Slack, Discord, Teams, Google Chat, Feishu, DingTalk, WeCom, Telegram, ntfy or any HTTP webhook."
+platforms = ["linux", "macos", "windows"]
+
+# Agent state changes: completions, approvals, and lost state.
+[[events]]
+on = "pane.agent_status_changed"
+command = ["python3", "run.py"]
+
+# The agent process died, or the pane that hosted it went away.
+[[events]]
+on = "pane.exited"
+command = ["python3", "run.py"]
+
+[[events]]
+on = "pane.closed"
+command = ["python3", "run.py"]
+
+[[actions]]
+id = "init"
+title = "Webhook Notify: write starter config"
+command = ["python3", "run.py", "init"]
+
+[[actions]]
+id = "test"
+title = "Webhook Notify: send test message"
+command = ["python3", "run.py", "test"]
+
+[[actions]]
+id = "status"
+title = "Webhook Notify: show configuration"
+command = ["python3", "run.py", "status"]
+
+[[actions]]
+id = "mute"
+title = "Webhook Notify: silence"
+command = ["python3", "run.py", "toggle", "off"]
+
+[[actions]]
+id = "resume"
+title = "Webhook Notify: resume"
+command = ["python3", "run.py", "toggle", "on"]

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+build/
+dist/
+*.egg-info/
+# Local runtime files; the example config under examples/ stays tracked.
+/state.json
+/config.toml
+/.env

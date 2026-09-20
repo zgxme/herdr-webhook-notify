@@ -1,0 +1,125 @@
+# herdr-webhook-notify configuration
+#
+# Where this file lives:
+#   herdr plugin config-dir herdr-webhook-notify
+#
+# Secrets stay out of this file: put them in .env next to it and reference them
+# with ${NAME}. Both the file and the .env are read on every hook run.
+
+# en (default) or zh-CN
+language = "en"
+
+[notify]
+# done    = turn finished (sent even when you watch the pane)
+# blocked = agent waits for approval or an answer
+# unknown = Herdr lost track of the agent state mid-turn
+# exited  = the agent process or pane went away
+events = ["done", "blocked", "unknown", "exited"]
+
+# true  = also notify while you are looking at that pane (recommended)
+# false = keep Herdr's own behavior and only notify about background work
+notify_when_focused = true
+
+# Skip turns shorter than this many seconds. 0 disables the check.
+min_turn_seconds = 0
+
+# Ignore repeated notifications for the same pane and kind within this window.
+cooldown_seconds = 5
+
+# Silent window in local time, for example ["22:00-08:00"]. Empty disables it.
+# quiet_hours = []
+# quiet_hours_exempt = ["blocked"]
+
+# Scope filters, matched case-insensitively with * wildcards.
+# include_workspaces = ["external-*"]
+# exclude_workspaces = ["scratch"]
+# include_tabs = []
+# exclude_tabs = []
+# include_agents = ["codex", "claude"]
+# exclude_agents = []
+
+[http]
+timeout_seconds = 5
+retries = 1
+
+# Optional: replace the built-in text. Placeholders are listed in the README.
+# [message]
+# title = "Herdr {status_label}: {task}"
+# body = """
+# **Status**: {status_label}
+# **Workspace**: {workspace}
+# **Task**: {task}
+# """
+
+# Optional: override single built-in strings, for example
+# [messages]
+# status.done = "Finished"
+
+# ---------------------------------------------------------------------------
+# Providers. Set enabled = true for the ones you use.
+# ---------------------------------------------------------------------------
+
+[providers.feishu]
+enabled = false
+webhook_url = "${FEISHU_WEBHOOK}"
+# secret = "${FEISHU_SECRET}"
+format = "card"                     # card | text
+# language = "zh-CN"
+
+# Lark is the international Feishu: same bot protocol, different host.
+[providers.lark]
+enabled = false
+webhook_url = "${LARK_WEBHOOK}"
+# secret = "${LARK_SECRET}"
+
+[providers.dingtalk]
+enabled = false
+webhook_url = "${DINGTALK_WEBHOOK}"
+# secret = "${DINGTALK_SECRET}"
+
+[providers.wecom]
+enabled = false
+# Either paste the full webhook URL or only the robot key.
+key = "${WECOM_KEY}"
+# webhook_url = "${WECOM_WEBHOOK}"
+
+[providers.slack]
+enabled = false
+webhook_url = "${SLACK_WEBHOOK}"
+
+[providers.discord]
+enabled = false
+webhook_url = "${DISCORD_WEBHOOK}"
+# username = "Herdr"
+# avatar_url = "https://example.com/avatar.png"
+# content = "<@&1234567890>"          # optional mention
+
+[providers.teams]
+enabled = false
+webhook_url = "${TEAMS_WEBHOOK}"
+
+[providers.google_chat]
+enabled = false
+webhook_url = "${GOOGLE_CHAT_WEBHOOK}"
+
+[providers.telegram]
+enabled = false
+bot_token = "${TELEGRAM_BOT_TOKEN}"
+chat_id = "${TELEGRAM_CHAT_ID}"
+# parse_mode = "HTML"                # HTML | MarkdownV2
+# message_thread_id = ""
+
+[providers.ntfy]
+enabled = false
+topic = "${NTFY_TOPIC}"
+# url = "https://ntfy.sh"
+# token = "${NTFY_TOKEN}"
+
+# Any HTTP endpoint that is not covered above.
+[providers.generic]
+enabled = false
+url = "${GENERIC_WEBHOOK_URL}"
+# method = "POST"
+# content_type = "application/json"
+# headers = { Authorization = "Bearer ${GENERIC_TOKEN}" }
+# body = '{"text": "{title}\n{body}"}'
