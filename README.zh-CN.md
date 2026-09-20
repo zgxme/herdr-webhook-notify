@@ -1,3 +1,5 @@
+<div align="center">
+
 # herdr-webhook-notify
 
 [![CI](https://github.com/zgxme/herdr-webhook-notify/actions/workflows/ci.yml/badge.svg)](https://github.com/zgxme/herdr-webhook-notify/actions/workflows/ci.yml)
@@ -10,7 +12,9 @@
 Lark、企业微信、Slack、Discord、Microsoft Teams、Google Chat、Telegram、ntfy，
 或者任意自定义 HTTP 接口。
 
-[English](README.md)
+[English](README.md) | [服务商配置指南](docs/providers.md) | [参与贡献](CONTRIBUTING.md)
+
+</div>
 
 ```
 herdr plugin install zgxme/herdr-webhook-notify

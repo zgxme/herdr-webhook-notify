@@ -1,3 +1,5 @@
+<div align="center">
+
 # herdr-webhook-notify
 
 [![CI](https://github.com/zgxme/herdr-webhook-notify/actions/workflows/ci.yml/badge.svg)](https://github.com/zgxme/herdr-webhook-notify/actions/workflows/ci.yml)
@@ -11,7 +13,9 @@ A [Herdr](https://herdr.dev) plugin that forwards agent notifications to the
 webhook service you already use: Slack, Discord, Microsoft Teams, Google Chat,
 Feishu, Lark, DingTalk, WeCom, Telegram, ntfy, or any custom HTTP endpoint.
 
-[中文说明](README.zh-CN.md)
+[中文说明](README.zh-CN.md) | [Provider guides](docs/providers.md) | [Contributing](CONTRIBUTING.md)
+
+</div>
 
 ```
 herdr plugin install zgxme/herdr-webhook-notify
