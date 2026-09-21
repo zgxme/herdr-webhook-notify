@@ -98,8 +98,9 @@ Herdr 没有显式的"失败"状态，`unknown` 和 `exited` 是最接近的两�
 3. 插件目录下的 `config.toml`。
 
 `.env` 先读 `HERDR_PLUGIN_CONFIG_DIR`，再读插件目录。`HERDR_PLUGIN_STATE_DIR` 决定
-`state.json` 的位置，`HERDR_BIN_PATH` 决定插件用哪个 Herdr 二进制去补 pane、工作区和
-tab 的名字。
+`state.json` 的位置 —— Herdr 会把它设成 `~/.local/state/herdr/plugins/<plugin-id>`，
+以 hook 方式运行时 cooldown 时间戳、耗时起点、失败重投队列都写在那里。
+`HERDR_BIN_PATH` 决定插件用哪个 Herdr 二进制去补 pane、工作区和 tab 的名字。
 
 两个列表语义容易踩坑：
 

@@ -47,7 +47,7 @@ approval request is worse than a late one.
 | `HERDR_PLUGIN_CONTEXT_JSON` | invocation context, see below |
 | `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`, `HERDR_PANE_ID` | ids of the event scope |
 | `HERDR_PLUGIN_CONFIG_DIR` | where `config.toml` and `.env` live |
-| `HERDR_PLUGIN_STATE_DIR` | where `state.json` lives |
+| `HERDR_PLUGIN_STATE_DIR` | where `state.json` lives; Herdr points it at `~/.local/state/herdr/plugins/<plugin-id>` |
 | `HERDR_PLUGIN_ROOT` | the installed or linked plugin directory |
 | `HERDR_BIN_PATH` | path to the running Herdr binary |
 | `HERDR_SOCKET_PATH`, `HERDR_ENV` | raw socket transport details |

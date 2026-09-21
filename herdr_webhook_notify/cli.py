@@ -523,6 +523,11 @@ def cmd_status(_args) -> int:
     out(f"events      : {', '.join(notify['events'])}")
     out(f"focused     : {'notify' if notify['notify_when_focused'] else 'skip'} when you watch the pane")
     out(f"min turn    : {notify['min_turn_seconds']:g}s   cooldown: {notify['cooldown_seconds']:g}s")
+    out(f"blocked wait: {notify['blocked_delay_seconds']:g}s")
+    out(
+        f"http        : timeout {cfg.http.get('timeout_seconds', 5):g}s"
+        f"   retries {int(cfg.http.get('retries', 1))}"
+    )
     if notify["include_workspaces"]:
         out(f"include ws  : {', '.join(notify['include_workspaces'])}")
     if notify["exclude_workspaces"]:
@@ -538,6 +543,8 @@ def cmd_status(_args) -> int:
     hours = ", ".join(str(item) for item in notify["quiet_hours"]) or "none"
     exempt = ", ".join(str(item) for item in notify["quiet_hours_exempt"]) or "none"
     out(f"quiet hours : {hours} (exempt: {exempt})")
+    overrides = [key for key in ("title", "body") if cfg.message.get(key)] + sorted(cfg.messages)
+    out(f"message     : {'custom: ' + ', '.join(overrides) if overrides else 'built-in'}")
 
     out("")
     if cfg.enabled:
@@ -548,7 +555,9 @@ def cmd_status(_args) -> int:
             target = first_str(options.get("webhook_url"), options.get("url"), options.get("topic"), options.get("chat_id"))
             detail = http.redact(target) if target.startswith("http") else target
             language = i18n.normalize(options.get("language") or cfg.language)
-            out(f"  - {name} ({module.TITLE}) language={language} {detail}")
+            provider_events = options.get("events")
+            scope = f" events=[{', '.join(provider_events)}]" if provider_events else ""
+            out(f"  - {name} ({module.TITLE}) language={language}{scope} {detail}")
     else:
         out("providers: none enabled")
 

@@ -15,6 +15,9 @@ All notable changes to this project are documented here. The format follows
 - `notify.blocked_delay_seconds` (default 10) waits before reporting a blocked
   pane and re-checks it first, so agents that approve their own prompts no
   longer trigger a notification. `0` restores the immediate behaviour.
+- `status` also reports `blocked_delay_seconds`, the HTTP timeout and retries,
+  per-provider event filters, and whether custom message templates are in use.
+- The READMEs document where `state.json` lives when Herdr runs the plugin.
 
 ### Fixed
 

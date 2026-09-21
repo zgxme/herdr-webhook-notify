@@ -123,8 +123,11 @@ The plugin looks for `config.toml` in this order:
 3. `config.toml` in the plugin directory itself.
 
 `.env` is read from `HERDR_PLUGIN_CONFIG_DIR` first, then from the plugin
-directory. `HERDR_PLUGIN_STATE_DIR` moves `state.json`, and `HERDR_BIN_PATH`
-tells the plugin which Herdr binary to call for pane, workspace and tab labels.
+directory. `HERDR_PLUGIN_STATE_DIR` moves `state.json`; Herdr points it at
+`~/.local/state/herdr/plugins/<plugin-id>`, which is where the cooldowns, turn
+timers and the retry queue actually live when the plugin runs as a hook.
+`HERDR_BIN_PATH` tells the plugin which Herdr binary to call for pane,
+workspace and tab labels.
 
 Two list semantics are easy to get wrong:
 

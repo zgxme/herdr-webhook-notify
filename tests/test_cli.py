@@ -308,6 +308,40 @@ exclude_tabs = ["9"]
     assert "exclude tab : 9" in output
 
 
+def test_status_shows_every_effective_setting(isolated_env, webhook_server, capsys):
+    text = f"""
+[notify]
+blocked_delay_seconds = 0
+
+[http]
+timeout_seconds = 12
+retries = 3
+
+[message]
+body = "{{task}}"
+
+[providers.feishu]
+enabled = true
+webhook_url = "{webhook_url(webhook_server)}"
+events = ["blocked"]
+"""
+    (Path(isolated_env["config_dir"]) / "config.toml").write_text(text, encoding="utf-8")
+    assert cli.main(["status"]) == 0
+    output = capsys.readouterr().out
+    assert "blocked wait: 0s" in output
+    assert "http        : timeout 12s   retries 3" in output
+    assert "message     : custom: body" in output
+    assert "events=[blocked]" in output
+
+
+def test_status_shows_built_in_defaults(isolated_env, capsys):
+    assert cli.main(["status"]) == 0
+    output = capsys.readouterr().out
+    assert "blocked wait: 10s" in output
+    assert "http        : timeout 5s   retries 1" in output
+    assert "message     : built-in" in output
+
+
 def test_status_reports_missing_quiet_hours(isolated_env, capsys):
     assert cli.main(["status"]) == 0
     assert "quiet hours : none (exempt: blocked)" in capsys.readouterr().out
