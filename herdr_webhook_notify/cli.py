@@ -33,7 +33,10 @@ USAGE = f"""herdr-webhook-notify {__version__}
 
 Usage:
   python3 run.py notify            run as a Herdr event hook (default)
-  python3 run.py test [provider]   send a test notification
+  python3 run.py test [provider] [kind]
+                                   send a test notification
+  python3 run.py preview [provider]
+                                   print the request without sending it
   python3 run.py init [--force]    write a starter config.toml
   python3 run.py status            show the effective configuration
   python3 run.py toggle on|off     silence or resume notifications
@@ -82,6 +85,7 @@ def main(argv=None) -> int:
     handlers = {
         "notify": cmd_notify,
         "test": cmd_test,
+        "preview": cmd_preview,
         "init": cmd_init,
         "status": cmd_status,
         "toggle": cmd_toggle,
@@ -218,6 +222,8 @@ def deliver(cfg, kind: str, status: str, fields: dict, timestamp: int, only=None
             continue
         options = cfg.provider_options(name)
         module = providers.get(name)
+        timeout = float(options.get("timeout_seconds", cfg.http.get("timeout_seconds", 5)))
+        retries = int(options.get("retries", cfg.http.get("retries", 1)))
         provider_events = options.get("events")
         if not ignore_events and provider_events and kind not in provider_events:
             results.append((name, True, None, "skipped: kind not enabled for this provider"))
@@ -235,8 +241,8 @@ def deliver(cfg, kind: str, status: str, fields: dict, timestamp: int, only=None
             delivery.url,
             delivery.body,
             delivery.headers,
-            timeout=float(cfg.http.get("timeout_seconds", 5)),
-            retries=int(cfg.http.get("retries", 1)),
+            timeout=timeout,
+            retries=retries,
             method=delivery.method,
         )
         if response.ok:
@@ -261,12 +267,16 @@ def flush_pending(cfg, state) -> int:
             body = base64.b64decode(item.get("body") or "")
         except (ValueError, TypeError):
             continue
+        item_timeout = item.get("timeout_seconds")
+        item_retries = item.get("retries")
         response = http.send(
             item.get("url", ""),
             body,
             item.get("headers") or {},
-            timeout=float(cfg.http.get("timeout_seconds", 5)),
-            retries=int(cfg.http.get("retries", 1)),
+            timeout=float(
+                item_timeout if item_timeout is not None else cfg.http.get("timeout_seconds", 5)
+            ),
+            retries=int(item_retries if item_retries is not None else cfg.http.get("retries", 1)),
             method=item.get("method") or "POST",
         )
         if response.ok:
@@ -318,6 +328,8 @@ def cmd_notify(_args) -> int:
     state = state_mod.State()
     cfg = config_mod.load()
 
+    for key in cfg.unknown_keys:
+        log(f"config warning: unknown key {key}")
     if state.is_disabled():
         log("notifications are silenced, run 'toggle on' to resume")
         return 0
@@ -414,7 +426,13 @@ def cmd_notify(_args) -> int:
                     int(now),
                     module,
                 )
-                state.queue(name, module.build(options, message), detail)
+                state.queue(
+                    name,
+                    module.build(options, message),
+                    detail,
+                    timeout=options.get("timeout_seconds", cfg.http.get("timeout_seconds", 5)),
+                    retries=options.get("retries", cfg.http.get("retries", 1)),
+                )
             except Exception:  # queueing is best effort
                 pass
 
@@ -458,17 +476,23 @@ def cmd_test(args) -> int:
         out("Run 'init' to write a starter config, then set enabled = true.")
         return 1
 
+    positional = [arg for arg in args if not arg.startswith("-")]
     only = None
-    for arg in args:
-        if arg.startswith("-"):
-            continue
-        only = {arg}
-        if providers.get(arg) is None:
-            out(f"Unknown provider '{arg}'. Available: {', '.join(providers.names())}")
+    kind = "test"
+    if positional:
+        only = {positional[0]}
+        if providers.get(positional[0]) is None:
+            out(f"Unknown provider '{positional[0]}'. Available: {', '.join(providers.names())}")
+            return 2
+    if len(positional) > 1:
+        kind = positional[1]
+        allowed = config_mod.SUPPORTED_EVENTS + ("test",)
+        if kind not in allowed:
+            out(f"Unknown kind '{kind}'. Choose from {', '.join(allowed)}.")
             return 2
 
     fields = sample_fields()
-    results = deliver(cfg, "test", "test", fields, int(time.time()), only=only, ignore_events=True)
+    results = deliver(cfg, kind, kind, fields, int(time.time()), only=only, ignore_events=True)
     failures = 0
     for name, ok, status_code, detail in results:
         if ok:
@@ -477,6 +501,54 @@ def cmd_test(args) -> int:
             failures += 1
             out(f"FAIL {name}: {detail}")
     return 1 if failures else 0
+
+
+# -------------------------------------------------------------------- preview
+
+
+def cmd_preview(args) -> int:
+    """Print the request each provider would send, without sending anything."""
+    cfg = config_mod.load()
+    if not cfg.enabled:
+        out("No provider is enabled yet.")
+        out(f"Config file: {config_mod.resolve_path()}")
+        out("Run 'init' to write a starter config, then set enabled = true.")
+        return 1
+
+    positional = [arg for arg in args if not arg.startswith("-")]
+    only = set(positional) if positional else None
+    if positional:
+        unknown = [name for name in positional if providers.get(name) is None]
+        if unknown:
+            out(f"Unknown provider '{unknown[0]}'. Available: {', '.join(providers.names())}")
+            return 2
+
+    fields = sample_fields()
+    now = int(time.time())
+    for name in cfg.enabled:
+        if only and name not in only:
+            continue
+        options = cfg.provider_options(name)
+        module = providers.get(name)
+        language = i18n.normalize(options.get("language") or cfg.language)
+        message = build_message(cfg, "test", "test", fields, language, now, module)
+        try:
+            delivery = module.build(options, message)
+        except Exception as exc:
+            out(f"{name}: build failed: {exc}")
+            continue
+        timeout = float(options.get("timeout_seconds", cfg.http.get("timeout_seconds", 5)))
+        retries = int(options.get("retries", cfg.http.get("retries", 1)))
+        out(f"{name}: {delivery.method} {http.redact(delivery.url)}")
+        out(f"  summary: {delivery.summary}")
+        out(f"  timeout: {timeout:g}s   retries: {retries}")
+        for key, value in sorted(http.redact_headers(delivery.headers).items()):
+            out(f"  {key}: {value}")
+        out("  body:")
+        for line in delivery.body.decode("utf-8", "replace").splitlines():
+            out(f"    {line}")
+        out("")
+    return 0
 
 
 # ----------------------------------------------------------------------- init

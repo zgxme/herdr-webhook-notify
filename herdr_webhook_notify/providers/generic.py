@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import re
+
 from .base import Delivery, json_bytes, option, require
 
 NAME = "generic"
 TITLE = "Generic HTTP"
 FLAVOR = "markdown"
-CONFIG_KEYS = ("url", "method", "headers", "body", "content_type")
+CONFIG_KEYS = ("url", "method", "headers", "body", "content_type", "flavor")
+
+# Only plain {name} placeholders are substituted, so a JSON body keeps its own
+# braces: {"text": "{title}"} stays valid.
+_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 def validate(options: dict) -> None:
@@ -30,9 +36,7 @@ def build(options: dict, message) -> Delivery:
 
     template = options.get("body")
     if isinstance(template, str) and template.strip():
-        body = template.format_map(
-            _safe_values(message)
-        ).encode("utf-8")
+        body = _fill(template, _values(message)).encode("utf-8")
         summary = "custom body"
     else:
         body = json_bytes(default_payload(message))
@@ -48,15 +52,14 @@ def build(options: dict, message) -> Delivery:
     )
 
 
-def _safe_values(message) -> dict:
+def _fill(template: str, values: dict) -> str:
+    return _PLACEHOLDER.sub(lambda match: str(values.get(match.group(1), match.group(0))), template)
+
+
+def _values(message) -> dict:
     values = {"title": message.title, "body": message.body, "kind": message.kind, "status": message.status}
     values.update(message.fields)
-    return _SafeDict(values)
-
-
-class _SafeDict(dict):
-    def __missing__(self, key: str) -> str:
-        return "{" + key + "}"
+    return values
 
 
 def default_payload(message) -> dict:

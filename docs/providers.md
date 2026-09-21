@@ -187,3 +187,6 @@ flavor = "markdown"                   # markdown | slack | plain
 ```
 
 Body templates support the same placeholders as `[message]` in `config.toml`.
+Only `{name}` placeholders are substituted, so JSON braces survive untouched
+and the example above works as written. Format specs such as `{duration_seconds:.0f}`
+are a `[message]`-only convenience and are left alone here.

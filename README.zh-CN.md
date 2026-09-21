@@ -190,6 +190,8 @@ events = ["blocked"]                 # 可单独覆盖事件范围
 | `enabled` | 布尔 | `false` | 是否启用；未启用的 provider 不会做参数校验。 |
 | `events` | 列表 | 继承全局 | 单独收窄范围，例如 Slack 只收 `["blocked"]`。 |
 | `language` | 字符串 | 继承全局 | 单独指定语言，适合团队里中英混用的场景。 |
+| `timeout_seconds` | 数字 | 继承 `[http]` | 单独设置超时，适合内部网关较慢的情况。 |
+| `retries` | 数字 | 继承 `[http]` | 单独设置重试次数。 |
 
 | 服务商 | 必填 | 可选 |
 | --- | --- | --- |
@@ -247,7 +249,8 @@ events = ["blocked"]                 # 可单独覆盖事件范围
 | action | 作用 |
 | --- | --- |
 | `herdr-webhook-notify.init` | 写出带注释的 `config.toml` |
-| `herdr-webhook-notify.test` | 给所有启用的 provider 发一条测试消息 |
+| `herdr-webhook-notify.test` | 给所有启用的 provider 发一条测试消息；`python3 run.py test [provider] [kind]` 可只测某一个、某一种类型 |
+| `herdr-webhook-notify.preview` | 打印每个 provider 将要发送的请求，但不真的发送 |
 | `herdr-webhook-notify.status` | 显示配置路径、provider、过滤规则和待重投队列 |
 | `herdr-webhook-notify.mute` / `.resume` | 不改配置临时静音 / 恢复 |
 
@@ -257,6 +260,7 @@ events = ["blocked"]                 # 可单独覆盖事件范围
 - 408/425/429/5xx 会做有限重试。
 - 仍失败的通知会落到插件状态目录，下一次事件时重投，最多三次。
 - 日志和 `status` 输出会隐藏 webhook URL 中的密钥片段。
+- 配置里写错的键不会被静默忽略：`status` 和 hook 日志会提示 `unknown config key` 并给出拼写建议。
 
 查看实际执行记录：
 

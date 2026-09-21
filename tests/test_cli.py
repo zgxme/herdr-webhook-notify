@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from herdr_webhook_notify import cli
+from herdr_webhook_notify import cli, http
 from herdr_webhook_notify import state as state_mod
 
 
@@ -409,3 +409,107 @@ def test_completion_is_not_delayed(isolated_env, webhook_server, monkeypatch, no
     send_event(monkeypatch, "pane.agent_status_changed", status_event("done"))
     assert no_sleep == []
     assert len(webhook_server.requests) == 1
+
+
+def test_test_command_accepts_a_kind(isolated_env, webhook_server):
+    write_config(isolated_env["config_dir"], webhook_url(webhook_server))
+    assert cli.main(["test", "feishu", "blocked"]) == 0
+    card = json.loads(webhook_server.requests[0]["body"])["card"]
+    assert card["header"]["title"]["content"].startswith("Herdr Needs attention")
+    assert card["header"]["template"] == "orange"
+
+
+def test_test_command_rejects_an_unknown_kind(isolated_env, webhook_server, capsys):
+    write_config(isolated_env["config_dir"], webhook_url(webhook_server))
+    assert cli.main(["test", "feishu", "exploded"]) == 2
+    assert "Unknown kind 'exploded'" in capsys.readouterr().out
+    assert webhook_server.requests == []
+
+
+def test_preview_prints_the_request_without_sending(isolated_env, webhook_server, capsys):
+    write_config(isolated_env["config_dir"], webhook_url(webhook_server))
+    assert cli.main(["preview"]) == 0
+    output = capsys.readouterr().out
+    assert webhook_server.requests == []
+    assert "feishu: POST" in output
+    assert "interactive card" in output
+    assert '"msg_type": "interactive"' in output
+    assert "timeout: 5s   retries: 0" in output
+
+
+def test_preview_masks_header_credentials(isolated_env, monkeypatch, capsys):
+    monkeypatch.setenv("GENERIC_TOKEN", "s3cret-value")
+    text = """
+[providers.generic]
+enabled = true
+url = "https://gateway.example.test/hook"
+headers = { Authorization = "Bearer ${GENERIC_TOKEN}" }
+body = '{"text": "{title}"}'
+"""
+    (Path(isolated_env["config_dir"]) / "config.toml").write_text(text, encoding="utf-8")
+    assert cli.main(["preview", "generic"]) == 0
+    output = capsys.readouterr().out
+    assert "Authorization: ***" in output
+    assert "s3cret-value" not in output
+    assert "https://gateway.example.test/***" in output
+    assert '"text": "Herdr Test notification' in output
+
+
+def provider_timeout_config(config_dir, url):
+    text = f"""
+[http]
+timeout_seconds = 5
+retries = 1
+
+[providers.feishu]
+enabled = true
+webhook_url = "{url}"
+timeout_seconds = 12
+retries = 0
+"""
+    (Path(config_dir) / "config.toml").write_text(text, encoding="utf-8")
+
+
+def test_provider_timeout_and_retries_override_http(isolated_env, monkeypatch, no_sleep):
+    provider_timeout_config(isolated_env["config_dir"], "http://127.0.0.1:9/hook")
+    seen = {}
+
+    def fake_send(url, body, headers, timeout=5, retries=1, method="POST"):
+        seen.update(timeout=timeout, retries=retries, method=method)
+        return http.Response(False, 500, "nope", "HTTP 500")
+
+    monkeypatch.setattr(cli.http, "send", fake_send)
+    assert cli.main(["test"]) == 1
+    assert seen == {"timeout": 12.0, "retries": 0, "method": "POST"}
+
+
+def test_queued_notification_keeps_provider_timeout_and_retries(
+    isolated_env, webhook_server, monkeypatch
+):
+    provider_timeout_config(isolated_env["config_dir"], webhook_url(webhook_server))
+    webhook_server.next_status = 500
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("done"))
+
+    item = state_mod.State().pending_items()[0]
+    assert item["timeout_seconds"] == 12
+    assert item["retries"] == 0
+
+    webhook_server.next_status = 200
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("working"))
+    assert len(webhook_server.requests) == 2
+    assert state_mod.State().pending_items() == []
+
+
+def test_unknown_config_key_is_logged_on_notify(isolated_env, webhook_server, monkeypatch, capsys):
+    text = f"""
+[notify]
+cooldown_second = 1
+
+[providers.feishu]
+enabled = true
+webhook_url = "{webhook_url(webhook_server)}"
+"""
+    (Path(isolated_env["config_dir"]) / "config.toml").write_text(text, encoding="utf-8")
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("done"))
+    assert len(webhook_server.requests) == 1
+    assert "unknown key notify.cooldown_second" in capsys.readouterr().err

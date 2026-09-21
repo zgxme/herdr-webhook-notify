@@ -18,12 +18,23 @@ All notable changes to this project are documented here. The format follows
 - `status` also reports `blocked_delay_seconds`, the HTTP timeout and retries,
   per-provider event filters, and whether custom message templates are in use.
 - The READMEs document where `state.json` lives when Herdr runs the plugin.
+- `preview` prints the request each provider would build, with the URL and any
+  credential headers masked, without sending it.
+- `test` takes an optional kind (`test feishu blocked`) so one message shape can
+  be checked without touching the rest.
+- Providers accept `timeout_seconds` and `retries` to override `[http]` for a
+  single destination, and queued notifications keep those values on replay.
+- Unknown config keys are reported with a suggested spelling, in `status` and in
+  the hook log, instead of being ignored.
 
 ### Fixed
 
 - `providers.generic.method` is honoured. It was validated but ignored, so
   `PUT` and `PATCH` were sent as `POST`. Queued notifications keep their method
   when they are replayed.
+- A generic `body` template may contain JSON braces again. Every placeholder was
+  passed through `str.format`, so the documented
+  `body = '{"text": "{title}"}'` example failed with "Invalid format specifier".
 - `quiet_hours` is normalized at load time, so a single string value is handled
   the same way as a list.
 - README no longer claims `cooldown_seconds` merges a completion with a pane

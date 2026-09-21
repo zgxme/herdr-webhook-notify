@@ -109,3 +109,66 @@ def test_example_config_is_valid():
     assert set(cfg.providers) == set(__import__(
         "herdr_webhook_notify.providers", fromlist=["names"]
     ).names())
+
+
+def test_unknown_keys_are_reported_with_a_suggestion(tmp_path):
+    path = write(
+        tmp_path,
+        """
+        [notify]
+        cooldown_second = 3
+
+        [messages]
+        "status.finished" = "done"
+
+        [providers.slack]
+        enabled = false
+        webhook_urll = "https://example.com"
+        """,
+    )
+    cfg = config_mod.load(str(path))
+    joined = " | ".join(cfg.unknown_keys)
+    assert "notify.cooldown_second" in joined and "cooldown_seconds" in joined
+    assert "messages.status.finished" in joined
+    assert "providers.slack.webhook_urll" in joined and "webhook_url" in joined
+    assert any("unknown config key" in warning for warning in cfg.warnings)
+
+
+def test_provider_specific_keys_are_known(tmp_path):
+    path = write(
+        tmp_path,
+        """
+        [providers.telegram]
+        enabled = false
+        bot_token = "token"
+        chat_id = "chat"
+        api_base = "https://example.test"
+
+        [providers.wecom]
+        enabled = false
+        key = "robot"
+        base_url = "https://example.test"
+
+        [providers.generic]
+        enabled = false
+        url = "https://example.test"
+        flavor = "plain"
+        timeout_seconds = 12
+        retries = 4
+        """,
+    )
+    assert config_mod.load(str(path)).unknown_keys == []
+
+
+def test_provider_timeout_must_be_a_positive_number(tmp_path):
+    path = write(
+        tmp_path,
+        """
+        [providers.slack]
+        enabled = true
+        webhook_url = "https://example.com"
+        timeout_seconds = 0
+        """,
+    )
+    with pytest.raises(config_mod.ConfigError, match="timeout_seconds"):
+        config_mod.load(str(path))

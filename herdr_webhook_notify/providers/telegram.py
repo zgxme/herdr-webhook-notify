@@ -16,6 +16,7 @@ CONFIG_KEYS = (
     "parse_mode",
     "message_thread_id",
     "disable_notification",
+    "api_base",
 )
 _API_BASE = "https://api.telegram.org"
 _MARKDOWN_V2_RESERVED = re.compile(r"([_*\[\]()~`>#+\-=|{}.!])")

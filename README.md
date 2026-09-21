@@ -224,6 +224,8 @@ Every provider accepts these three keys:
 | `enabled` | bool | `false` | Turn this provider on. A disabled provider is not validated. |
 | `events` | list | inherit | Optional per-provider subset, e.g. `["blocked"]` to only get approvals in Slack. |
 | `language` | string | inherit | Optional per-provider language, useful when your team chats mix languages. |
+| `timeout_seconds` | number | inherit `[http]` | Optional per-provider timeout, for a slow gateway. |
+| `retries` | integer | inherit `[http]` | Optional per-provider retry count. |
 
 | provider | required | optional |
 | --- | --- | --- |
@@ -284,7 +286,8 @@ small pull request: copy a block in `herdr_webhook_notify/i18n.py`.
 | action | what it does |
 | --- | --- |
 | `herdr-webhook-notify.init` | write the commented starter `config.toml` |
-| `herdr-webhook-notify.test` | send a sample notification to every enabled provider |
+| `herdr-webhook-notify.test` | send a sample notification to every enabled provider; `python3 run.py test [provider] [kind]` narrows it down |
+| `herdr-webhook-notify.preview` | print the request each provider would send, without sending it |
 | `herdr-webhook-notify.status` | show config path, providers, filters and queue |
 | `herdr-webhook-notify.mute` / `.resume` | silence or resume without editing config |
 
@@ -318,6 +321,10 @@ herdr plugin log list --plugin herdr-webhook-notify
 
 A webhook is never hit — run `status`, it prints unresolved `${...}` variables
 as warnings, and `herdr plugin log list` shows the hook's stderr.
+
+A setting seems ignored — look for `unknown config key` in `status` output or in
+the hook log. Keys the plugin does not know are reported there with a suggested
+spelling instead of being silently ignored.
 
 Nothing is sent while you watch a pane — check `notify_when_focused`; with
 `false` the plugin deliberately mirrors Herdr and stays quiet for the pane you

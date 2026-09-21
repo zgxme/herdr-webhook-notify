@@ -7,7 +7,7 @@ from .base import Delivery, json_bytes, json_headers, option, require
 NAME = "wecom"
 TITLE = "WeCom group robot"
 FLAVOR = "markdown"
-CONFIG_KEYS = ("webhook_url", "key")
+CONFIG_KEYS = ("webhook_url", "key", "base_url")
 DEFAULT_BASE = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send"
 
 

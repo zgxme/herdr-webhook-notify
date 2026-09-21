@@ -91,7 +91,7 @@ class State:
         self.data["panes"][pane_id] = entry
 
     # ----------------------------------------------------------- pending
-    def queue(self, provider: str, delivery, error: str) -> None:
+    def queue(self, provider: str, delivery, error: str, timeout=None, retries=None) -> None:
         self.data["pending"].append(
             {
                 "provider": provider,
@@ -99,6 +99,8 @@ class State:
                 "method": getattr(delivery, "method", "POST"),
                 "headers": delivery.headers,
                 "body": base64.b64encode(delivery.body).decode("ascii"),
+                "timeout_seconds": timeout,
+                "retries": retries,
                 "attempts": (self.pending_attempts(provider, delivery.url) + 1),
                 "last_error": error,
                 "created": time.time(),

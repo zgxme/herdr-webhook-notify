@@ -36,6 +36,21 @@ def redact(url: str) -> str:
     )
 
 
+SENSITIVE_HEADER_HINTS = ("authorization", "cookie", "token", "secret", "key", "password")
+
+
+def redact_headers(headers: dict) -> dict:
+    """Mask the values of headers that usually carry credentials."""
+    masked = {}
+    for key, value in (headers or {}).items():
+        name = str(key).lower()
+        if any(hint in name for hint in SENSITIVE_HEADER_HINTS):
+            masked[str(key)] = "***"
+        else:
+            masked[str(key)] = str(value)
+    return masked
+
+
 def send(url: str, body: bytes, headers: dict, timeout: float = 5, retries: int = 1, method: str = "POST") -> Response:
     attempt = 0
     while True:

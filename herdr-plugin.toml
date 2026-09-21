@@ -30,6 +30,11 @@ title = "Webhook Notify: send test message"
 command = ["python3", "run.py", "test"]
 
 [[actions]]
+id = "preview"
+title = "Webhook Notify: preview payload"
+command = ["python3", "run.py", "preview"]
+
+[[actions]]
 id = "status"
 title = "Webhook Notify: show configuration"
 command = ["python3", "run.py", "status"]

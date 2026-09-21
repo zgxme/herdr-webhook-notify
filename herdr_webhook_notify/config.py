@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
+from difflib import get_close_matches
 from pathlib import Path
 
 from . import _toml, i18n, providers
@@ -36,6 +37,14 @@ DEFAULTS = {
     "providers": {},
 }
 
+# Keys the plugin understands, used to report typos instead of ignoring them.
+TOP_LEVEL_KEYS = ("language", "notify", "http", "message", "messages", "providers")
+NOTIFY_KEYS = tuple(DEFAULTS["notify"])
+HTTP_KEYS = tuple(DEFAULTS["http"])
+MESSAGE_KEYS = ("title", "body")
+CUSTOM_MESSAGE_KEYS = ("status.done", "status.blocked", "status.unknown", "status.exited", "status.test", "title", "body")
+PROVIDER_COMMON_KEYS = ("enabled", "events", "language", "timeout_seconds", "retries")
+
 
 class ConfigError(Exception):
     """Raised when config.toml cannot be used."""
@@ -51,6 +60,7 @@ class Config:
     messages: dict = field(default_factory=dict)
     providers: dict = field(default_factory=dict)
     enabled: list = field(default_factory=list)
+    unknown_keys: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
     missing_env: list = field(default_factory=list)
 
@@ -178,6 +188,50 @@ def _parse_hour_range(value: str) -> tuple:
     return (start_h * 60 + start_m, end_h * 60 + end_m)
 
 
+def _unknown_keys(raw, provider_tables) -> list:
+    """Report keys the plugin does not understand, suggesting a close match."""
+    found = []
+
+    def note(path: str, key, known) -> None:
+        text = f"{path}.{key}" if path else str(key)
+        matches = get_close_matches(str(key), [str(item) for item in known], n=1, cutoff=0.7)
+        if matches:
+            text += f" (did you mean {path + '.' if path else ''}{matches[0]}?)"
+        found.append(text)
+
+    if not isinstance(raw, dict):
+        return found
+
+    for key in raw:
+        if key not in TOP_LEVEL_KEYS:
+            note("", key, TOP_LEVEL_KEYS)
+
+    for path, known in (("notify", NOTIFY_KEYS), ("http", HTTP_KEYS), ("message", MESSAGE_KEYS)):
+        table = raw.get(path)
+        if isinstance(table, dict):
+            for key in table:
+                if key not in known:
+                    note(path, key, known)
+
+    messages = raw.get("messages")
+    if isinstance(messages, dict):
+        for key in messages:
+            if key not in CUSTOM_MESSAGE_KEYS:
+                note("messages", key, CUSTOM_MESSAGE_KEYS)
+
+    if isinstance(provider_tables, dict):
+        for name, options in provider_tables.items():
+            if not isinstance(options, dict):
+                continue
+            module = providers.get(name)
+            known = PROVIDER_COMMON_KEYS + (module.CONFIG_KEYS if module else ())
+            for key in options:
+                if key not in known:
+                    note(f"providers.{name}", key, known)
+
+    return found
+
+
 def load(explicit=None) -> Config:
     load_env_files()
     path = resolve_path(explicit)
@@ -277,9 +331,19 @@ def load(explicit=None) -> Config:
                     )
         if "language" in options:
             options["language"] = str(options["language"])
+        if "timeout_seconds" in options:
+            options["timeout_seconds"] = _number(
+                options["timeout_seconds"], f"providers.{name}.timeout_seconds", 0.1
+            )
+        if "retries" in options:
+            options["retries"] = int(_number(options["retries"], f"providers.{name}.retries"))
         config.providers[name] = options
         if options["enabled"]:
             config.enabled.append(name)
+
+    config.unknown_keys = _unknown_keys(raw, raw.get("providers") if isinstance(raw, dict) else None)
+    for key in config.unknown_keys:
+        config.warnings.append(f"unknown config key: {key}")
 
     for name in config.enabled:
         module = providers.get(name)
