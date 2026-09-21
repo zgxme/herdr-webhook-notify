@@ -228,6 +228,7 @@ def load(explicit=None) -> Config:
     ):
         notify[key] = _string_list(notify.get(key), f"notify.{key}")
     quiet_hours = _string_list(notify.get("quiet_hours"), "notify.quiet_hours")
+    notify["quiet_hours"] = quiet_hours
     notify["quiet_ranges"] = [_parse_hour_range(item) for item in quiet_hours]
     config.notify = notify
 

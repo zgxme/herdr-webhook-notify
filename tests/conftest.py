@@ -11,11 +11,12 @@ if str(ROOT) not in sys.path:
 
 
 class _Handler(BaseHTTPRequestHandler):
-    def do_POST(self):  # noqa: N802 - stdlib naming
+    def _handle(self):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length)
         self.server.requests.append(
             {
+                "method": self.command,
                 "path": self.path,
                 "headers": {key.lower(): value for key, value in self.headers.items()},
                 "body": body,
@@ -26,6 +27,15 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(b'{"ok":true}')
+
+    def do_POST(self):  # noqa: N802 - stdlib naming
+        self._handle()
+
+    def do_PUT(self):  # noqa: N802 - stdlib naming
+        self._handle()
+
+    def do_PATCH(self):  # noqa: N802 - stdlib naming
+        self._handle()
 
     def log_message(self, *args):  # silence test output
         return

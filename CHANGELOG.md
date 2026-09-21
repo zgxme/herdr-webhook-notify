@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `{repo}` and `{worktree}` placeholders, filled from the worktree Herdr
+  reports for the workspace.
+- `docs/events.md`, covering hook payloads, invocation context and their limits.
+- `status` now prints the configured quiet hours and tab include/exclude lists.
+
+### Fixed
+
+- `providers.generic.method` is honoured. It was validated but ignored, so
+  `PUT` and `PATCH` were sent as `POST`. Queued notifications keep their method
+  when they are replayed.
+- `quiet_hours` is normalized at load time, so a single string value is handled
+  the same way as a list.
+- README no longer claims `cooldown_seconds` merges a completion with a pane
+  exit. Those are different kinds and are sent separately.
+
 ## [0.1.0] - 2026-09-20
 
 ### Added

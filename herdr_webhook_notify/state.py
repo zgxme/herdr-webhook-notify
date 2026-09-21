@@ -96,6 +96,7 @@ class State:
             {
                 "provider": provider,
                 "url": delivery.url,
+                "method": getattr(delivery, "method", "POST"),
                 "headers": delivery.headers,
                 "body": base64.b64encode(delivery.body).decode("ascii"),
                 "attempts": (self.pending_attempts(provider, delivery.url) + 1),

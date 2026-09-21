@@ -143,6 +143,9 @@ def collect_fields(pane_id: str, data: dict, context: dict, entry: dict, started
     if isinstance(started_at, (int, float)) and now >= started_at:
         duration = now - started_at
 
+    worktree = context.get("worktree")
+    worktree = worktree if isinstance(worktree, dict) else {}
+
     return {
         "session": first_str(os.environ.get("HERDR_SESSION"), entry.get("session")) or "default",
         "workspace": first_str(
@@ -175,6 +178,8 @@ def collect_fields(pane_id: str, data: dict, context: dict, entry: dict, started
         "pane_id": pane_id,
         "cwd": cwd,
         "branch": herdr.git_branch(cwd),
+        "repo": first_str(worktree.get("repo_name")),
+        "worktree": first_str(worktree.get("checkout_path")),
         "duration": render.format_duration(duration),
         "duration_seconds": duration,
         "host": socket.gethostname(),
@@ -232,6 +237,7 @@ def deliver(cfg, kind: str, status: str, fields: dict, timestamp: int, only=None
             delivery.headers,
             timeout=float(cfg.http.get("timeout_seconds", 5)),
             retries=int(cfg.http.get("retries", 1)),
+            method=delivery.method,
         )
         if response.ok:
             results.append((name, True, response.status, response.body[:200]))
@@ -261,6 +267,7 @@ def flush_pending(cfg, state) -> int:
             item.get("headers") or {},
             timeout=float(cfg.http.get("timeout_seconds", 5)),
             retries=int(cfg.http.get("retries", 1)),
+            method=item.get("method") or "POST",
         )
         if response.ok:
             sent += 1
@@ -479,11 +486,17 @@ def cmd_status(_args) -> int:
         out(f"include ws  : {', '.join(notify['include_workspaces'])}")
     if notify["exclude_workspaces"]:
         out(f"exclude ws  : {', '.join(notify['exclude_workspaces'])}")
+    if notify["include_tabs"]:
+        out(f"include tab : {', '.join(notify['include_tabs'])}")
+    if notify["exclude_tabs"]:
+        out(f"exclude tab : {', '.join(notify['exclude_tabs'])}")
     if notify["include_agents"]:
         out(f"include ag  : {', '.join(notify['include_agents'])}")
     if notify["exclude_agents"]:
         out(f"exclude ag  : {', '.join(notify['exclude_agents'])}")
-    out(f"quiet hours : {', '.join(str(item) for item in notify['quiet_hours_exempt'])} exempt")
+    hours = ", ".join(str(item) for item in notify["quiet_hours"]) or "none"
+    exempt = ", ".join(str(item) for item in notify["quiet_hours_exempt"]) or "none"
+    out(f"quiet hours : {hours} (exempt: {exempt})")
 
     out("")
     if cfg.enabled:

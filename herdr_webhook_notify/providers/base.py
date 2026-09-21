@@ -31,6 +31,7 @@ class Delivery:
     body: bytes
     headers: dict = field(default_factory=dict)
     summary: str = ""
+    method: str = "POST"
 
 
 COLORS = {

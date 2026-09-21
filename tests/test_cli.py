@@ -201,3 +201,113 @@ def test_test_command_sends_sample(isolated_env, webhook_server, capsys):
     assert cli.main(["test"]) == 0
     assert "OK   feishu" in capsys.readouterr().out
     assert len(webhook_server.requests) == 1
+
+
+def write_generic_config(config_dir, url, method="POST"):
+    text = f"""
+[http]
+retries = 0
+
+[providers.generic]
+enabled = true
+url = "{url}"
+method = "{method}"
+"""
+    (Path(config_dir) / "config.toml").write_text(text, encoding="utf-8")
+
+
+def test_generic_provider_sends_with_configured_method(isolated_env, webhook_server, capsys):
+    write_generic_config(isolated_env["config_dir"], webhook_url(webhook_server), method="PUT")
+    assert cli.main(["test"]) == 0
+    assert len(webhook_server.requests) == 1
+    assert webhook_server.requests[0]["method"] == "PUT"
+
+
+def test_queued_notification_replays_with_its_method(isolated_env, webhook_server, monkeypatch):
+    write_generic_config(isolated_env["config_dir"], webhook_url(webhook_server), method="PATCH")
+    webhook_server.next_status = 500
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("done"))
+    assert len(webhook_server.requests) == 1
+
+    state = state_mod.State()
+    assert state.pending_items()[0]["method"] == "PATCH"
+
+    webhook_server.next_status = 200
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("working"))
+    assert len(webhook_server.requests) == 2
+    assert webhook_server.requests[1]["method"] == "PATCH"
+    assert state_mod.State().pending_items() == []
+
+
+def test_worktree_placeholders(isolated_env, webhook_server, monkeypatch):
+    text = f"""
+[http]
+retries = 0
+
+[message]
+body = "{{repo}}|{{worktree}}|{{workspace}}"
+
+[providers.feishu]
+enabled = true
+webhook_url = "{webhook_url(webhook_server)}"
+"""
+    (Path(isolated_env["config_dir"]) / "config.toml").write_text(text, encoding="utf-8")
+    context = {
+        "workspace_id": "wD",
+        "workspace_label": "external-fuzzer",
+        "tab_id": "wD:t1",
+        "tab_label": "2",
+        "focused_pane_id": "wD:p1",
+        "focused_pane_agent": "codex",
+        "focused_pane_cwd": "/tmp/work",
+        "worktree": {
+            "repo_key": "github.com/zgxme/herdr-webhook-notify",
+            "repo_name": "herdr-webhook-notify",
+            "repo_root": "/home/u/src/herdr-webhook-notify",
+            "checkout_path": "/home/u/src/herdr-webhook-notify.worktrees/fix",
+            "is_linked_worktree": True,
+        },
+    }
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("done"), context=context)
+    body = json.loads(webhook_server.requests[0]["body"])["card"]["elements"][0]["content"]
+    assert body == "herdr-webhook-notify|/home/u/src/herdr-webhook-notify.worktrees/fix|external-fuzzer"
+
+
+def test_worktree_placeholders_drop_the_line_outside_a_worktree(
+    isolated_env, webhook_server, monkeypatch
+):
+    text = f"""
+[http]
+retries = 0
+
+[message]
+body = "**Repo**: {{repo}}"
+
+[providers.feishu]
+enabled = true
+webhook_url = "{webhook_url(webhook_server)}"
+"""
+    (Path(isolated_env["config_dir"]) / "config.toml").write_text(text, encoding="utf-8")
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("done"))
+    body = json.loads(webhook_server.requests[0]["body"])["card"]["elements"][0]["content"]
+    assert "Repo" not in body
+
+
+def test_status_shows_quiet_hours_and_tab_filters(isolated_env, capsys):
+    text = """
+[notify]
+quiet_hours = ["22:00-08:00"]
+include_tabs = ["2"]
+exclude_tabs = ["9"]
+"""
+    (Path(isolated_env["config_dir"]) / "config.toml").write_text(text, encoding="utf-8")
+    assert cli.main(["status"]) == 0
+    output = capsys.readouterr().out
+    assert "quiet hours : 22:00-08:00 (exempt: blocked)" in output
+    assert "include tab : 2" in output
+    assert "exclude tab : 9" in output
+
+
+def test_status_reports_missing_quiet_hours(isolated_env, capsys):
+    assert cli.main(["status"]) == 0
+    assert "quiet hours : none (exempt: blocked)" in capsys.readouterr().out

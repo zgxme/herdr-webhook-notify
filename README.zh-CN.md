@@ -80,11 +80,32 @@ herdr plugin link ./herdr-webhook-notify
 
 Herdr 没有显式的"失败"状态，`unknown` 和 `exited` 是最接近的两个信号，默认都会通知。
 
+每个 hook 拿到的事件字段、以及插件如何把它变成通知，见
+[docs/events.md](docs/events.md)。
+
 ## 配置
 
 配置文件位于 `herdr plugin config-dir herdr-webhook-notify` 打印的目录中。密钥可以放在
 同目录的 `.env` 里，用 `${NAME}` 引用；已经存在于进程环境中的变量优先，方便配合 CI 和
 密钥管理。
+
+### 配置从哪来
+
+`config.toml` 的查找顺序：
+
+1. `HERDR_WEBHOOK_NOTIFY_CONFIG`：直接指定文件路径。
+2. `HERDR_PLUGIN_CONFIG_DIR` + `/config.toml`：插件配置目录。
+3. 插件目录下的 `config.toml`。
+
+`.env` 先读 `HERDR_PLUGIN_CONFIG_DIR`，再读插件目录。`HERDR_PLUGIN_STATE_DIR` 决定
+`state.json` 的位置，`HERDR_BIN_PATH` 决定插件用哪个 Herdr 二进制去补 pane、工作区和
+tab 的名字。
+
+两个列表语义容易踩坑：
+
+- `notify.events = []` 不等于"不通知"：空列表会回落到四种类型全开。想去掉某类，就从
+  列表里删掉它。
+- `providers.<名字>.events = []` 同理，表示"该 provider 不做过滤"，而不是"永不通知"。
 
 ```toml
 language = "zh-CN"                   # en | zh-CN
@@ -132,7 +153,7 @@ events = ["blocked"]                 # 可单独覆盖事件范围
 | `events` | 列表 | `["done", "blocked", "unknown", "exited"]` | 允许通知的类型。`done` 同时覆盖"后台完成"和"你正盯着时完成"两种情况。 |
 | `notify_when_focused` | 布尔 | `true` | `true` 表示你正看着那个 pane 完成时也通知；`false` 则跟 Herdr 原生行为一致，只看后台。 |
 | `min_turn_seconds` | 数字 | `0` | 短于该秒数的 turn 不通知，`0` 表示不限制；只对 `done`/`blocked`/`unknown` 生效。 |
-| `cooldown_seconds` | 数字 | `5` | 同一 pane 同一类型的通知在该时间窗内去重，同时把"状态变化 + pane 退出"合并成一条；`0` 表示不去重。 |
+| `cooldown_seconds` | 数字 | `5` | 同一 pane 同一类型的通知在该时间窗内去重，可以把同一个 pane 重复的 `done` 合并成一条。不同类型分别计时，所以"完成 + pane 退出"（`done` + `exited`）仍然是两条；`0` 表示不去重。 |
 | `quiet_hours` | 列表 | `[]` | 本地时间的免打扰区间，如 `["22:00-08:00"]`，支持跨天。 |
 | `quiet_hours_exempt` | 列表 | `["blocked"]` | 免打扰期间仍然通知的类型，默认让审批/提问能吵醒你。 |
 | `include_workspaces` | 通配列表 | `[]` | 只通知匹配的工作区名，如 `["external-*"]`；空表示全部。 |
@@ -202,13 +223,15 @@ events = ["blocked"]                 # 可单独覆盖事件范围
 | `{pane_id}` | Pane id，例如 `wD:p1`。 |
 | `{cwd}` | 该 pane 的工作目录。 |
 | `{branch}` | `{cwd}` 所在的 git 分支，不在仓库里时为空。 |
-| `{duration}` | 本轮耗时，格式化后如 `2m05s`；未知时为空。 |
+| `{repo}` | 工作区所属 worktree 的仓库名；非 worktree 工作区为空。 |
+| `{worktree}` | 工作区 worktree 的 checkout 路径；非 worktree 工作区为空。 |
+| `{duration}` | 本轮耗时，格式化后如 `2m05s`。从 pane 进入 `working` 那一刻起算，等待审批的时间不计入；未知时为空。 |
 | `{duration_seconds}` | 同样的耗时，纯秒数，方便自己格式化。 |
 | `{host}` | 运行 Herdr 的机器名。 |
 | `{time}` | 本地时间，格式 `YYYY-MM-DD HH:MM:SS`。 |
 
 未知占位符会原样保留，写错能立刻看出来；整行只有空值的会被自动删掉，所以像 `{branch}`
-这种可选字段不会留下空标签。
+这种可选字段不会留下空标签。耗时取不到时同理，`min_turn_seconds` 也会跳过比较。
 
 ## 支持的服务商
 

@@ -104,12 +104,34 @@ Per-provider details, including how to obtain each webhook, live in
 Herdr has no explicit "failed" state. `unknown` and `exited` are the closest
 signals it exposes, and both are reported by default.
 
+The payload each hook receives, and how the plugin turns it into a
+notification, is documented in [docs/events.md](docs/events.md).
+
 ## Configuration
 
 The config file lives in the plugin config directory printed by
 `herdr plugin config-dir herdr-webhook-notify`. Secrets can stay in a `.env`
 file next to it and be referenced as `${NAME}`; a variable that is already set
 in the environment wins, so CI and secrets managers keep working.
+
+### Where the config comes from
+
+The plugin looks for `config.toml` in this order:
+
+1. `HERDR_WEBHOOK_NOTIFY_CONFIG` — path to an explicit file.
+2. `HERDR_PLUGIN_CONFIG_DIR` + `/config.toml` — the plugin config directory.
+3. `config.toml` in the plugin directory itself.
+
+`.env` is read from `HERDR_PLUGIN_CONFIG_DIR` first, then from the plugin
+directory. `HERDR_PLUGIN_STATE_DIR` moves `state.json`, and `HERDR_BIN_PATH`
+tells the plugin which Herdr binary to call for pane, workspace and tab labels.
+
+Two list semantics are easy to get wrong:
+
+- `notify.events = []` does not mean "notify nothing". An empty list falls back
+  to all four kinds; remove the kinds you do not want instead.
+- `providers.<name>.events = []` means "no per-provider filter" for the same
+  reason, not "never notify".
 
 ```toml
 language = "en"                      # en | zh-CN
@@ -163,7 +185,7 @@ language = "en"                      # optional per-provider language
 | `events` | list | `["done", "blocked", "unknown", "exited"]` | Kinds allowed to notify. `done` covers both background completions and completions that happened while you watched the pane. |
 | `notify_when_focused` | bool | `true` | `true` also notifies for the pane you are looking at; `false` mirrors Herdr and stays quiet for it. |
 | `min_turn_seconds` | number | `0` | Ignore turns shorter than this many seconds. `0` disables the check. Applies to `done`, `blocked` and `unknown`. |
-| `cooldown_seconds` | number | `5` | Suppress another notification for the same pane and kind inside this window; it also collapses the "status change" plus "pane exit" pair into one message. `0` disables. |
+| `cooldown_seconds` | number | `5` | Suppress another notification for the same pane and kind inside this window, which collapses repeated `done` events for one pane into one message. Kinds are counted separately, so a completion plus a pane exit (`done` + `exited`) are still two messages. `0` disables. |
 | `quiet_hours` | list of `"HH:MM-HH:MM"` | `[]` | Local-time silent window; overnight ranges like `22:00-08:00` work. |
 | `quiet_hours_exempt` | list | `["blocked"]` | Kinds that ignore `quiet_hours`, so approval requests still reach you at night. |
 | `include_workspaces` | list of globs | `[]` | Only notify for these workspace labels, e.g. `["external-*"]`. Empty means all. |
@@ -233,14 +255,18 @@ Use these in `message.title`, `message.body` and in `generic`'s `body` template:
 | `{pane_id}` | Pane id, e.g. `wD:p1`. |
 | `{cwd}` | Working directory of the pane. |
 | `{branch}` | Current git branch of `{cwd}`; empty outside a repository. |
-| `{duration}` | Turn duration, human formatted, e.g. `2m05s`; empty when unknown. |
+| `{repo}` | Repository name of the workspace worktree; empty outside a worktree workspace. |
+| `{worktree}` | Checkout path of the workspace worktree; empty outside a worktree workspace. |
+| `{duration}` | Turn duration, human formatted, e.g. `2m05s`. Measured from the moment the pane entered `working`, so time spent waiting for approval is not counted. Empty when unknown. |
 | `{duration_seconds}` | The same duration as a raw number of seconds, for custom formatting. |
 | `{host}` | Hostname of the machine running Herdr. |
 | `{time}` | Local timestamp, `YYYY-MM-DD HH:MM:SS`. |
 
 Unknown placeholders are kept as-is, so typos are visible instead of silently
 disappearing. Lines whose only value resolves to empty are dropped, which is
-why optional fields such as `{branch}` do not leave a dangling label.
+why optional fields such as `{branch}` do not leave a dangling label. The same
+emptiness makes `min_turn_seconds` skip its check, because there is no duration
+to compare.
 
 ### Language
 
@@ -293,8 +319,10 @@ Nothing is sent while you watch a pane — check `notify_when_focused`; with
 are looking at.
 
 Everything is sent twice — Herdr emits both a status change and a process exit
-when a pane disappears. The `cooldown_seconds` window (default 5s) collapses
-those into one message.
+when a pane disappears, and those are two different kinds (`done` or `unknown`,
+plus `exited`). `cooldown_seconds` only suppresses repeats of the same kind, so
+it cannot merge the pair. Remove `exited` from `notify.events` (or from a
+provider's `events` list) if you only care about completions.
 
 ## Development
 

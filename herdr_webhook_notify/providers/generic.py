@@ -38,7 +38,14 @@ def build(options: dict, message) -> Delivery:
         body = json_bytes(default_payload(message))
         summary = "default JSON body"
 
-    return Delivery(NAME, option(options, "url"), body, headers, summary)
+    return Delivery(
+        NAME,
+        option(options, "url"),
+        body,
+        headers,
+        summary,
+        method=option(options, "method", "POST").upper(),
+    )
 
 
 def _safe_values(message) -> dict:
