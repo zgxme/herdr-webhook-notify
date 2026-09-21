@@ -311,3 +311,67 @@ exclude_tabs = ["9"]
 def test_status_reports_missing_quiet_hours(isolated_env, capsys):
     assert cli.main(["status"]) == 0
     assert "quiet hours : none (exempt: blocked)" in capsys.readouterr().out
+
+
+def blocked_config(config_dir, url, extra=""):
+    text = f"""
+[notify]
+{extra}
+
+[http]
+retries = 0
+
+[providers.feishu]
+enabled = true
+webhook_url = "{url}"
+"""
+    (Path(config_dir) / "config.toml").write_text(text, encoding="utf-8")
+
+
+def test_blocked_waits_before_notifying(isolated_env, webhook_server, monkeypatch, no_sleep):
+    blocked_config(isolated_env["config_dir"], webhook_url(webhook_server), "blocked_delay_seconds = 10")
+    monkeypatch.setattr(cli.herdr, "agent_status", lambda pane_id: "blocked")
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("blocked"))
+    assert no_sleep == [10]
+    assert len(webhook_server.requests) == 1
+
+
+def test_blocked_is_skipped_when_the_agent_approved_itself(
+    isolated_env, webhook_server, monkeypatch, no_sleep
+):
+    blocked_config(isolated_env["config_dir"], webhook_url(webhook_server), "blocked_delay_seconds = 10")
+    monkeypatch.setattr(cli.herdr, "agent_status", lambda pane_id: "working")
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("blocked"))
+    assert no_sleep == [10]
+    assert webhook_server.requests == []
+
+
+def test_blocked_is_skipped_when_the_pane_is_gone(isolated_env, webhook_server, monkeypatch):
+    blocked_config(isolated_env["config_dir"], webhook_url(webhook_server), "blocked_delay_seconds = 10")
+    monkeypatch.setattr(cli.herdr, "agent_status", lambda pane_id: "")
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("blocked"))
+    assert webhook_server.requests == []
+
+
+def test_blocked_notifies_when_the_status_cannot_be_read(
+    isolated_env, webhook_server, monkeypatch, no_sleep
+):
+    blocked_config(isolated_env["config_dir"], webhook_url(webhook_server), "blocked_delay_seconds = 10")
+    monkeypatch.setattr(cli.herdr, "agent_status", lambda pane_id: None)
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("blocked"))
+    assert no_sleep == [10]
+    assert len(webhook_server.requests) == 1
+
+
+def test_blocked_delay_zero_notifies_immediately(isolated_env, webhook_server, monkeypatch, no_sleep):
+    blocked_config(isolated_env["config_dir"], webhook_url(webhook_server), "blocked_delay_seconds = 0")
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("blocked"))
+    assert no_sleep == []
+    assert len(webhook_server.requests) == 1
+
+
+def test_completion_is_not_delayed(isolated_env, webhook_server, monkeypatch, no_sleep):
+    blocked_config(isolated_env["config_dir"], webhook_url(webhook_server), "blocked_delay_seconds = 10")
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("done"))
+    assert no_sleep == []
+    assert len(webhook_server.requests) == 1

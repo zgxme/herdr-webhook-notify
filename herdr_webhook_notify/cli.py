@@ -279,6 +279,41 @@ def flush_pending(cfg, state) -> int:
     return sent
 
 
+def settle_blocked(cfg, state, pane_id: str, decision, fields: dict, now: float):
+    """Wait out an auto-approval before reporting a blocked pane.
+
+    Agents that approve their own prompts go through ``blocked`` for a moment.
+    Waiting gives them the chance to move on, in which case no notification is
+    sent at all. Returns ``(state, now)`` to continue with, or ``None``
+    when the pane stopped waiting for a human while we waited.
+    """
+    delay = float(cfg.notify.get("blocked_delay_seconds") or 0)
+    if delay <= 0:
+        return state, now
+
+    log(f"pane {pane_id} is blocked, waiting {delay:g}s before notifying")
+    time.sleep(delay)
+
+    status = herdr.agent_status(pane_id)
+    if status == "":
+        log("skip notification: pane is gone, the exit event covers that")
+        return None
+    if status is not None and status != "blocked":
+        log(f"skip notification: pane left blocked for '{status}' while we waited")
+        return None
+
+    # Other hooks may have written state while we slept, and the filters have to
+    # judge the notification at the moment it is actually sent.
+    now = time.time()
+    state = state_mod.State()
+    entry = state.pane(pane_id)
+    allowed, reason = filters.evaluate(cfg, decision, fields, entry, now, datetime.now())
+    if not allowed:
+        log(f"skip notification: {reason}")
+        return None
+    return state, now
+
+
 def cmd_notify(_args) -> int:
     state = state_mod.State()
     cfg = config_mod.load()
@@ -350,6 +385,12 @@ def cmd_notify(_args) -> int:
     if not allowed:
         log(f"skip notification: {reason}")
         return 0
+
+    if decision.kind == "blocked":
+        settled = settle_blocked(cfg, state, pane_id, decision, fields, now)
+        if settled is None:
+            return 0
+        state, now = settled
 
     results = deliver(cfg, decision.kind, decision.status, fields, int(now))
     sent = 0

@@ -31,6 +31,13 @@ A `done` status followed by `idle` in the same pane does not produce a second
 notification, because `idle` only counts while the previous status was
 `working` or `blocked`.
 
+`blocked` notifications are delayed by `notify.blocked_delay_seconds` (10
+seconds by default) and re-checked before they are sent, because agents that
+approve their own prompts only pass through that status for a moment. When the
+pane has moved on, or the pane is gone, nothing is sent at all. When the status
+cannot be read at that point the notification goes out anyway, since a missed
+approval request is worse than a late one.
+
 ## Environment
 
 | variable | contents |

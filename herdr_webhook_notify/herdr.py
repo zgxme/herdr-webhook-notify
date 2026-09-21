@@ -13,9 +13,9 @@ def binary() -> str:
     return os.environ.get("HERDR_BIN_PATH") or "herdr"
 
 
-def cli_json(args) -> dict:
+def cli_json(args, fresh: bool = False) -> dict:
     key = tuple(args)
-    if key in CACHE:
+    if not fresh and key in CACHE:
         return CACHE[key]
     result = {}
     try:
@@ -59,6 +59,23 @@ def pane(pane_id: str) -> dict:
         if isinstance(item, dict) and item.get("pane_id") == pane_id:
             return item
     return {}
+
+
+def agent_status(pane_id: str):
+    """Read the current agent status of one pane.
+
+    Returns ``None`` when Herdr cannot be queried, which callers should treat as
+    "unknown" instead of "not blocked". An empty string means the pane is gone,
+    which is different: a pane that no longer exists cannot be waiting.
+    """
+    payload = cli_json(["pane", "list"], fresh=True)
+    if not payload:
+        return None
+    for item in _items(payload, "panes"):
+        if isinstance(item, dict) and item.get("pane_id") == pane_id:
+            status = item.get("agent_status")
+            return status.strip().lower() if isinstance(status, str) else None
+    return ""
 
 
 def workspace_label(workspace_id: str) -> str:

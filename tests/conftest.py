@@ -75,3 +75,18 @@ def os_environ():
     import os
 
     return os.environ
+
+
+@pytest.fixture(autouse=True)
+def no_sleep(monkeypatch):
+    """Record requested sleeps instead of performing them.
+
+    The blocked delay and the retry backoff would otherwise slow the suite down.
+    Returns the list of requested durations.
+    """
+    from herdr_webhook_notify import cli, http
+
+    slept = []
+    monkeypatch.setattr(cli.time, "sleep", slept.append)
+    monkeypatch.setattr(http.time, "sleep", slept.append)
+    return slept

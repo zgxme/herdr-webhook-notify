@@ -12,6 +12,9 @@ All notable changes to this project are documented here. The format follows
   reports for the workspace.
 - `docs/events.md`, covering hook payloads, invocation context and their limits.
 - `status` now prints the configured quiet hours and tab include/exclude lists.
+- `notify.blocked_delay_seconds` (default 10) waits before reporting a blocked
+  pane and re-checks it first, so agents that approve their own prompts no
+  longer trigger a notification. `0` restores the immediate behaviour.
 
 ### Fixed
 

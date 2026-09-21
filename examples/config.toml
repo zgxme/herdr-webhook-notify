@@ -26,6 +26,11 @@ min_turn_seconds = 0
 # Ignore repeated notifications for the same pane and kind within this window.
 cooldown_seconds = 5
 
+# Agents that approve their own prompts pass through `blocked` for a moment.
+# Wait this long before reporting a blocked pane, then re-check it: if the agent
+# moved on, nothing is sent. 0 notifies immediately.
+blocked_delay_seconds = 10
+
 # Silent window in local time, for example ["22:00-08:00"]. Empty disables it.
 # quiet_hours = []
 # quiet_hours_exempt = ["blocked"]

@@ -141,6 +141,7 @@ events = ["done", "blocked", "unknown", "exited"]
 notify_when_focused = true           # false = only background panes
 min_turn_seconds = 0                 # skip short turns
 cooldown_seconds = 5                 # de-duplicate per pane and kind
+blocked_delay_seconds = 10           # wait out a self-approving agent
 quiet_hours = ["22:00-08:00"]        # local time, supports overnight ranges
 quiet_hours_exempt = ["blocked"]     # kinds that ignore quiet hours
 include_workspaces = []              # * wildcards, case-insensitive
@@ -186,6 +187,7 @@ language = "en"                      # optional per-provider language
 | `notify_when_focused` | bool | `true` | `true` also notifies for the pane you are looking at; `false` mirrors Herdr and stays quiet for it. |
 | `min_turn_seconds` | number | `0` | Ignore turns shorter than this many seconds. `0` disables the check. Applies to `done`, `blocked` and `unknown`. |
 | `cooldown_seconds` | number | `5` | Suppress another notification for the same pane and kind inside this window, which collapses repeated `done` events for one pane into one message. Kinds are counted separately, so a completion plus a pane exit (`done` + `exited`) are still two messages. `0` disables. |
+| `blocked_delay_seconds` | number | `10` | Wait this long before reporting a `blocked` pane, then re-check it: if the agent approved its own prompt and moved on, nothing is sent. `0` notifies immediately. |
 | `quiet_hours` | list of `"HH:MM-HH:MM"` | `[]` | Local-time silent window; overnight ranges like `22:00-08:00` work. |
 | `quiet_hours_exempt` | list | `["blocked"]` | Kinds that ignore `quiet_hours`, so approval requests still reach you at night. |
 | `include_workspaces` | list of globs | `[]` | Only notify for these workspace labels, e.g. `["external-*"]`. Empty means all. |

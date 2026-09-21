@@ -20,6 +20,7 @@ DEFAULTS = {
         "notify_when_focused": True,
         "min_turn_seconds": 0,
         "cooldown_seconds": 5,
+        "blocked_delay_seconds": 10,
         "quiet_hours": [],
         "quiet_hours_exempt": ["blocked"],
         "include_workspaces": [],
@@ -217,6 +218,9 @@ def load(explicit=None) -> Config:
     notify["notify_when_focused"] = bool(notify.get("notify_when_focused", True))
     notify["min_turn_seconds"] = _number(notify.get("min_turn_seconds", 0), "notify.min_turn_seconds")
     notify["cooldown_seconds"] = _number(notify.get("cooldown_seconds", 5), "notify.cooldown_seconds")
+    notify["blocked_delay_seconds"] = _number(
+        notify.get("blocked_delay_seconds", 10), "notify.blocked_delay_seconds"
+    )
     for key in (
         "include_workspaces",
         "exclude_workspaces",

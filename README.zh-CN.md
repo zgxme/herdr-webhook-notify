@@ -115,6 +115,7 @@ events = ["done", "blocked", "unknown", "exited"]
 notify_when_focused = true           # false = 只看后台 pane，盯着看时不打扰
 min_turn_seconds = 0                 # 太短的 turn 不通知
 cooldown_seconds = 5                 # 同一 pane 同类型去重
+blocked_delay_seconds = 10           # 先等 auto approve，别误报
 quiet_hours = ["22:00-08:00"]        # 本地时间，支持跨天
 quiet_hours_exempt = ["blocked"]     # 免打扰期间例外
 include_workspaces = []              # 支持 * 通配，大小写不敏感
@@ -154,6 +155,7 @@ events = ["blocked"]                 # 可单独覆盖事件范围
 | `notify_when_focused` | 布尔 | `true` | `true` 表示你正看着那个 pane 完成时也通知；`false` 则跟 Herdr 原生行为一致，只看后台。 |
 | `min_turn_seconds` | 数字 | `0` | 短于该秒数的 turn 不通知，`0` 表示不限制；只对 `done`/`blocked`/`unknown` 生效。 |
 | `cooldown_seconds` | 数字 | `5` | 同一 pane 同一类型的通知在该时间窗内去重，可以把同一个 pane 重复的 `done` 合并成一条。不同类型分别计时，所以"完成 + pane 退出"（`done` + `exited`）仍然是两条；`0` 表示不去重。 |
+| `blocked_delay_seconds` | 数字 | `10` | `blocked` 先等这么久再通知：等待结束后会重新查一次状态，agent 已经自己放行并继续执行就不发，避免 auto approve 造成的误报；`0` 表示立即通知。 |
 | `quiet_hours` | 列表 | `[]` | 本地时间的免打扰区间，如 `["22:00-08:00"]`，支持跨天。 |
 | `quiet_hours_exempt` | 列表 | `["blocked"]` | 免打扰期间仍然通知的类型，默认让审批/提问能吵醒你。 |
 | `include_workspaces` | 通配列表 | `[]` | 只通知匹配的工作区名，如 `["external-*"]`；空表示全部。 |
