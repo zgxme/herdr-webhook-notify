@@ -193,13 +193,15 @@ def collect_fields(pane_id: str, data: dict, context: dict, entry: dict, started
     }
 
 
-def build_message(cfg, kind: str, status: str, fields: dict, language: str, timestamp: int, module):
+def build_message(cfg, kind: str, status: str, fields: dict, language: str, timestamp: int, module, options=None):
+    if options is None:
+        options = cfg.provider_options(module.NAME)
     values = dict(fields)
     values["kind"] = kind
     values["status"] = status
     values["status_label"] = i18n.status_label(language, kind, cfg.messages)
 
-    flavor = module.flavor(cfg.provider_options(module.NAME)) if hasattr(module, "flavor") else module.FLAVOR
+    flavor = module.flavor(options) if hasattr(module, "flavor") else module.FLAVOR
     title_template = cfg.message.get("title") or i18n.translate(language, "title", cfg.messages)
     body_template = cfg.message.get("body") or i18n.translate(language, "body", cfg.messages)
     title = render.drop_empty_lines(markup.convert(render.render(title_template, values), flavor))
@@ -214,23 +216,37 @@ def build_message(cfg, kind: str, status: str, fields: dict, language: str, time
     )
 
 
+def selected(cfg, name: str, only) -> bool:
+    """``only`` names provider instances or types; ``None`` selects everything."""
+    return not only or name in only or cfg.provider_options(name).get("type") in only
+
+
 def deliver(cfg, kind: str, status: str, fields: dict, timestamp: int, only=None, ignore_events=False):
-    """Send the notification to every enabled provider. Returns result tuples."""
+    """Send the notification to every enabled provider. Returns result tuples.
+
+    ``ignore_events`` also skips the per-provider workspace/tab/agent scope, so
+    a test notification reaches every selected provider.
+    """
     results = []
     for name in cfg.enabled:
-        if only and name not in only:
+        if not selected(cfg, name, only):
             continue
         options = cfg.provider_options(name)
-        module = providers.get(name)
+        module = cfg.provider_module(name)
         timeout = float(options.get("timeout_seconds", cfg.http.get("timeout_seconds", 5)))
         retries = int(options.get("retries", cfg.http.get("retries", 1)))
         provider_events = options.get("events")
         if not ignore_events and provider_events and kind not in provider_events:
             results.append((name, True, None, "skipped: kind not enabled for this provider"))
             continue
+        if not ignore_events:
+            in_scope, reason = filters.scope(options, fields)
+            if not in_scope:
+                results.append((name, True, None, f"skipped: {reason}"))
+                continue
 
         language = i18n.normalize(options.get("language") or cfg.language)
-        message = build_message(cfg, kind, status, fields, language, timestamp, module)
+        message = build_message(cfg, kind, status, fields, language, timestamp, module, options)
         try:
             delivery = module.build(options, message)
         except Exception as exc:
@@ -407,7 +423,9 @@ def cmd_notify(_args) -> int:
     results = deliver(cfg, decision.kind, decision.status, fields, int(now))
     sent = 0
     for name, ok, status_code, detail in results:
-        if ok:
+        if ok and status_code is None:
+            log(f"{name}: {detail}")
+        elif ok:
             sent += 1
             log(f"{name}: delivered ({status_code})")
         else:
@@ -415,7 +433,7 @@ def cmd_notify(_args) -> int:
             if detail.startswith("build failed"):
                 continue
             options = cfg.provider_options(name)
-            module = providers.get(name)
+            module = cfg.provider_module(name)
             try:
                 message = build_message(
                     cfg,
@@ -425,6 +443,7 @@ def cmd_notify(_args) -> int:
                     i18n.normalize(options.get("language") or cfg.language),
                     int(now),
                     module,
+                    options,
                 )
                 state.queue(
                     name,
@@ -440,7 +459,7 @@ def cmd_notify(_args) -> int:
         state.mark_notified(pane_id, decision.kind, now)
     state.save()
 
-    if not sent and results:
+    if not sent and any(status_code is not None or not ok for _, ok, status_code, _ in results):
         log("no provider accepted the notification")
     return 0
 
@@ -468,6 +487,14 @@ def sample_fields() -> dict:
     }
 
 
+def target_names(cfg) -> list:
+    return sorted(set(cfg.providers) | set(providers.names()))
+
+
+def known_target(cfg, name: str) -> bool:
+    return name in cfg.providers or providers.get(name) is not None
+
+
 def cmd_test(args) -> int:
     cfg = config_mod.load()
     if not cfg.enabled:
@@ -481,8 +508,8 @@ def cmd_test(args) -> int:
     kind = "test"
     if positional:
         only = {positional[0]}
-        if providers.get(positional[0]) is None:
-            out(f"Unknown provider '{positional[0]}'. Available: {', '.join(providers.names())}")
+        if not known_target(cfg, positional[0]):
+            out(f"Unknown provider '{positional[0]}'. Available: {', '.join(target_names(cfg))}")
             return 2
     if len(positional) > 1:
         kind = positional[1]
@@ -495,7 +522,9 @@ def cmd_test(args) -> int:
     results = deliver(cfg, kind, kind, fields, int(time.time()), only=only, ignore_events=True)
     failures = 0
     for name, ok, status_code, detail in results:
-        if ok:
+        if ok and status_code is None:
+            out(f"SKIP {name}: {detail}")
+        elif ok:
             out(f"OK   {name} (HTTP {status_code})")
         else:
             failures += 1
@@ -518,20 +547,20 @@ def cmd_preview(args) -> int:
     positional = [arg for arg in args if not arg.startswith("-")]
     only = set(positional) if positional else None
     if positional:
-        unknown = [name for name in positional if providers.get(name) is None]
+        unknown = [name for name in positional if not known_target(cfg, name)]
         if unknown:
-            out(f"Unknown provider '{unknown[0]}'. Available: {', '.join(providers.names())}")
+            out(f"Unknown provider '{unknown[0]}'. Available: {', '.join(target_names(cfg))}")
             return 2
 
     fields = sample_fields()
     now = int(time.time())
     for name in cfg.enabled:
-        if only and name not in only:
+        if not selected(cfg, name, only):
             continue
         options = cfg.provider_options(name)
-        module = providers.get(name)
+        module = cfg.provider_module(name)
         language = i18n.normalize(options.get("language") or cfg.language)
-        message = build_message(cfg, "test", "test", fields, language, now, module)
+        message = build_message(cfg, "test", "test", fields, language, now, module, options)
         try:
             delivery = module.build(options, message)
         except Exception as exc:
@@ -540,6 +569,7 @@ def cmd_preview(args) -> int:
         timeout = float(options.get("timeout_seconds", cfg.http.get("timeout_seconds", 5)))
         retries = int(options.get("retries", cfg.http.get("retries", 1)))
         out(f"{name}: {delivery.method} {http.redact(delivery.url)}")
+        out(f"  type: {options['type']}")
         out(f"  summary: {delivery.summary}")
         out(f"  timeout: {timeout:g}s   retries: {retries}")
         for key, value in sorted(http.redact_headers(delivery.headers).items()):
@@ -623,13 +653,16 @@ def cmd_status(_args) -> int:
         out("providers:")
         for name in cfg.enabled:
             options = cfg.provider_options(name)
-            module = providers.get(name)
+            module = cfg.provider_module(name)
             target = first_str(options.get("webhook_url"), options.get("url"), options.get("topic"), options.get("chat_id"))
             detail = http.redact(target) if target.startswith("http") else target
             language = i18n.normalize(options.get("language") or cfg.language)
             provider_events = options.get("events")
             scope = f" events=[{', '.join(provider_events)}]" if provider_events else ""
-            out(f"  - {name} ({module.TITLE}) language={language}{scope} {detail}")
+            for key in config_mod.SCOPE_KEYS:
+                if options.get(key):
+                    scope += f" {key}=[{', '.join(options[key])}]"
+            out(f"  - {name} ({module.TITLE}) type={options['type']} language={language}{scope} {detail}")
     else:
         out("providers: none enabled")
 

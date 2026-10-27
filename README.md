@@ -217,15 +217,18 @@ Globs are case-insensitive and use `*`/`?` wildcards.
 
 ### `[providers.<name>]`
 
-Every provider accepts these three keys:
+Every provider accepts these keys:
 
 | key | type | default | meaning |
 | --- | --- | --- | --- |
+| `type` | string | table name | Which provider implements this table. Omit it and `[providers.slack]` means `slack`; set it to run several instances of one provider, see below. |
 | `enabled` | bool | `false` | Turn this provider on. A disabled provider is not validated. |
 | `events` | list | inherit | Optional per-provider subset, e.g. `["blocked"]` to only get approvals in Slack. |
 | `language` | string | inherit | Optional per-provider language, useful when your team chats mix languages. |
 | `timeout_seconds` | number | inherit `[http]` | Optional per-provider timeout, for a slow gateway. |
 | `retries` | integer | inherit `[http]` | Optional per-provider retry count. |
+| `include_workspaces` / `exclude_workspaces` | list | `[]` | Extra per-provider scope, applied after `[notify]`. Same glob rules; empty means no extra limit. |
+| `include_tabs` / `exclude_tabs`, `include_agents` / `exclude_agents` | list | `[]` | Same, for tabs and agents. |
 
 | provider | required | optional |
 | --- | --- | --- |
@@ -242,6 +245,35 @@ Every provider accepts these three keys:
 | `generic` | `url` | `method` (`POST`/`PUT`/`PATCH`), `headers`, `body` (template), `content_type`, `flavor` (`markdown`/`slack`/`plain`) |
 
 How to obtain each webhook is documented in [docs/providers.md](docs/providers.md).
+
+#### Several webhooks of one kind (named instances)
+
+The table name can be any instance name as long as `type` says which provider
+it is. Every enabled instance gets the notification, each with its own URL,
+headers, body and scope. For example two chat-bot webhooks (such as Grok Bot), each
+for its own workspaces:
+
+```toml
+[providers.bot_app]
+type = "generic"
+enabled = true
+url = "${APP_BOT_WEBHOOK_URL}"
+headers = { Authorization = "${APP_BOT_WEBHOOK_AUTH}" }
+include_workspaces = ["my-app"]
+body = """{"source":"herdr-webhook-notify","status":"{status}","kind":"{kind}","workspace":"{workspace}","task":"{task}","duration":"{duration}"}"""
+
+[providers.bot_infra]
+type = "generic"
+enabled = true
+url = "${INFRA_BOT_WEBHOOK_URL}"
+headers = { Authorization = "${INFRA_BOT_WEBHOOK_AUTH}" }
+include_workspaces = ["infra-*"]
+body = """{"source":"herdr-webhook-notify","status":"{status}","kind":"{kind}","workspace":"{workspace}","task":"{task}","duration":"{duration}"}"""
+```
+
+`test`, `preview` and `status` take the instance name (`test bot_infra`);
+passing a type (`test generic`) selects every instance of it. `test` ignores the
+per-provider scope so you can check any instance from anywhere.
 
 ### Placeholders
 

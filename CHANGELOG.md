@@ -26,8 +26,20 @@ All notable changes to this project are documented here. The format follows
   single destination, and queued notifications keep those values on replay.
 - Unknown config keys are reported with a suggested spelling, in `status` and in
   the hook log, instead of being ignored.
+- Named provider instances: `[providers.<name>]` may use any table name when
+  `type` says which provider implements it, so several webhooks of one kind
+  (e.g. two `generic` bots) can be enabled together. Omitting `type` keeps the
+  table name as the type, so existing configs are unchanged.
+- Providers accept `include_workspaces` / `exclude_workspaces` (and the tab and
+  agent pairs) to narrow their own scope after `[notify]`.
+- `test`, `preview` and `status` work with instance names; passing a type
+  selects every instance of it. `status` and `preview` show each instance's
+  `type` and scope.
 
 ### Fixed
+
+- A provider skipped by its own `events` no longer counts as delivered, so it
+  no longer starts the cooldown or logs `delivered (None)`.
 
 - `providers.generic.method` is honoured. It was validated but ignored, so
   `PUT` and `PATCH` were sent as `POST`. Queued notifications keep their method

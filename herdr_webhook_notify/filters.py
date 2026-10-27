@@ -26,6 +26,21 @@ def in_quiet_hours(ranges, when: datetime) -> bool:
     return False
 
 
+def scope(rules: dict, fields: dict):
+    """Apply include/exclude workspace, tab and agent lists. Empty lists allow all.
+
+    ``rules`` is the ``[notify]`` table or a single provider instance's options.
+    """
+    for kind, key in (("workspace", "workspaces"), ("tab", "tabs"), ("agent", "agents")):
+        value = fields.get(kind) or ""
+        include = rules.get(f"include_{key}") or []
+        if include and not matches(include, value):
+            return False, f"{kind} '{value}' is not in include_{key}"
+        if matches(rules.get(f"exclude_{key}") or [], value):
+            return False, f"{kind} '{value}' is in exclude_{key}"
+    return True, ""
+
+
 def evaluate(config, decision, fields: dict, entry: dict, now: float, when: datetime):
     """Return (allowed, reason). ``reason`` explains a skip."""
     notify = config.notify
@@ -36,22 +51,9 @@ def evaluate(config, decision, fields: dict, entry: dict, now: float, when: date
     if decision.watched and not notify["notify_when_focused"]:
         return False, "pane was being watched and notify_when_focused is false"
 
-    workspace = fields.get("workspace") or ""
-    tab = fields.get("tab") or ""
-    agent = fields.get("agent") or ""
-
-    if notify["include_workspaces"] and not matches(notify["include_workspaces"], workspace):
-        return False, f"workspace '{workspace}' is not in include_workspaces"
-    if matches(notify["exclude_workspaces"], workspace):
-        return False, f"workspace '{workspace}' is in exclude_workspaces"
-    if notify["include_tabs"] and not matches(notify["include_tabs"], tab):
-        return False, f"tab '{tab}' is not in include_tabs"
-    if matches(notify["exclude_tabs"], tab):
-        return False, f"tab '{tab}' is in exclude_tabs"
-    if notify["include_agents"] and not matches(notify["include_agents"], agent):
-        return False, f"agent '{agent}' is not in include_agents"
-    if matches(notify["exclude_agents"], agent):
-        return False, f"agent '{agent}' is in exclude_agents"
+    allowed, reason = scope(notify, fields)
+    if not allowed:
+        return False, reason
 
     exempt = decision.kind in (notify["quiet_hours_exempt"] or [])
     if notify["quiet_ranges"] and not exempt and in_quiet_hours(notify["quiet_ranges"], when):

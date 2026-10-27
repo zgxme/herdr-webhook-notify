@@ -91,3 +91,13 @@ def test_cooldown_uses_previous_notification(tmp_path):
     allowed, reason = filters.evaluate(cfg, decision(), fields(), entry, 110.0, datetime(2026, 1, 1))
     assert not allowed and "cooldown" in reason
     assert filters.evaluate(cfg, decision(), fields(), entry, 200.0, datetime(2026, 1, 1))[0]
+
+
+def test_scope_applies_provider_instance_lists():
+    rules = {"include_workspaces": ["my-*"], "exclude_agents": ["claude"]}
+    assert filters.scope(rules, fields(workspace="my-app")) == (True, "")
+    allowed, reason = filters.scope(rules, fields(workspace="scratch"))
+    assert not allowed and "include_workspaces" in reason
+    allowed, reason = filters.scope(rules, fields(workspace="my-app", agent="claude"))
+    assert not allowed and "exclude_agents" in reason
+    assert filters.scope({}, fields())[0]

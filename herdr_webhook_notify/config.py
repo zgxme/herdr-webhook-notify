@@ -43,7 +43,15 @@ NOTIFY_KEYS = tuple(DEFAULTS["notify"])
 HTTP_KEYS = tuple(DEFAULTS["http"])
 MESSAGE_KEYS = ("title", "body")
 CUSTOM_MESSAGE_KEYS = ("status.done", "status.blocked", "status.unknown", "status.exited", "status.test", "title", "body")
-PROVIDER_COMMON_KEYS = ("enabled", "events", "language", "timeout_seconds", "retries")
+SCOPE_KEYS = (
+    "include_workspaces",
+    "exclude_workspaces",
+    "include_tabs",
+    "exclude_tabs",
+    "include_agents",
+    "exclude_agents",
+)
+PROVIDER_COMMON_KEYS = ("type", "enabled", "events", "language", "timeout_seconds", "retries") + SCOPE_KEYS
 
 
 class ConfigError(Exception):
@@ -66,6 +74,10 @@ class Config:
 
     def provider_options(self, name: str) -> dict:
         return self.providers.get(name, {})
+
+    def provider_module(self, name: str):
+        """Module behind a provider instance; ``type`` defaults to the table name."""
+        return providers.get(self.provider_options(name).get("type") or name)
 
     def is_enabled(self, name: str) -> bool:
         return name in self.enabled
@@ -223,7 +235,7 @@ def _unknown_keys(raw, provider_tables) -> list:
         for name, options in provider_tables.items():
             if not isinstance(options, dict):
                 continue
-            module = providers.get(name)
+            module = providers.get(options.get("type") or name)
             known = PROVIDER_COMMON_KEYS + (module.CONFIG_KEYS if module else ())
             for key in options:
                 if key not in known:
@@ -275,15 +287,7 @@ def load(explicit=None) -> Config:
     notify["blocked_delay_seconds"] = _number(
         notify.get("blocked_delay_seconds", 10), "notify.blocked_delay_seconds"
     )
-    for key in (
-        "include_workspaces",
-        "exclude_workspaces",
-        "include_tabs",
-        "exclude_tabs",
-        "include_agents",
-        "exclude_agents",
-        "quiet_hours_exempt",
-    ):
+    for key in SCOPE_KEYS + ("quiet_hours_exempt",):
         notify[key] = _string_list(notify.get(key), f"notify.{key}")
     quiet_hours = _string_list(notify.get("quiet_hours"), "notify.quiet_hours")
     notify["quiet_hours"] = quiet_hours
@@ -313,12 +317,17 @@ def load(explicit=None) -> Config:
     for name, options in provider_tables.items():
         if not isinstance(options, dict):
             raise ConfigError(f"providers.{name}: expected a table")
-        module = providers.get(name)
-        if module is None:
+        provider_type = options.get("type", name)
+        if not isinstance(provider_type, str) or providers.get(provider_type) is None:
+            if "type" in options:
+                label, hint = f"type '{provider_type}'", ""
+            else:
+                label, hint = "provider", ' (set type = "generic" or another provider to use a custom instance name)'
             raise ConfigError(
-                f"providers.{name}: unknown provider, available: {', '.join(providers.names())}"
+                f"providers.{name}: unknown {label}{hint}, available: {', '.join(providers.names())}"
             )
         options = dict(options)
+        options["type"] = provider_type
         options["enabled"] = bool(options.get("enabled", False))
         events_override = options.get("events")
         if events_override is not None:
@@ -337,6 +346,8 @@ def load(explicit=None) -> Config:
             )
         if "retries" in options:
             options["retries"] = int(_number(options["retries"], f"providers.{name}.retries"))
+        for key in SCOPE_KEYS:
+            options[key] = _string_list(options.get(key), f"providers.{name}.{key}")
         config.providers[name] = options
         if options["enabled"]:
             config.enabled.append(name)
@@ -346,11 +357,13 @@ def load(explicit=None) -> Config:
         config.warnings.append(f"unknown config key: {key}")
 
     for name in config.enabled:
-        module = providers.get(name)
+        module = config.provider_module(name)
         try:
             module.validate(config.providers[name])
         except Exception as exc:  # ProviderError and friends
-            raise ConfigError(str(exc)) from exc
+            # Messages name the type; say which instance when several share it.
+            text = str(exc) if config.providers[name]["type"] == name else f"providers.{name}: {exc}"
+            raise ConfigError(text) from exc
 
     if not config.enabled:
         config.warnings.append(

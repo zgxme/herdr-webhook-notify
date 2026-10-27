@@ -513,3 +513,77 @@ webhook_url = "{webhook_url(webhook_server)}"
     send_event(monkeypatch, "pane.agent_status_changed", status_event("done"))
     assert len(webhook_server.requests) == 1
     assert "unknown key notify.cooldown_second" in capsys.readouterr().err
+
+
+def two_bots_config(config_dir, server):
+    base = f"http://127.0.0.1:{server.server_port}"
+    body = '{"workspace":"{workspace}","kind":"{kind}"}'
+    text = f"""
+[http]
+retries = 0
+
+[providers.bot_app]
+type = "generic"
+enabled = true
+url = "{base}/app"
+headers = {{ Authorization = "Bearer app" }}
+include_workspaces = ["my-app"]
+body = '{body}'
+
+[providers.bot_infra]
+type = "generic"
+enabled = true
+url = "{base}/infra"
+include_workspaces = ["external-*"]
+body = '{body}'
+"""
+    (Path(config_dir) / "config.toml").write_text(text, encoding="utf-8")
+
+
+def test_named_instances_only_receive_their_workspaces(isolated_env, webhook_server, monkeypatch):
+    two_bots_config(isolated_env["config_dir"], webhook_server)
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("done"))
+    assert [request["path"] for request in webhook_server.requests] == ["/infra"]
+    assert json.loads(webhook_server.requests[0]["body"]) == {"workspace": "external-fuzzer", "kind": "done"}
+    assert "authorization" not in webhook_server.requests[0]["headers"]
+
+
+def test_named_instances_both_match(isolated_env, webhook_server, monkeypatch):
+    two_bots_config(isolated_env["config_dir"], webhook_server)
+    text = (Path(isolated_env["config_dir"]) / "config.toml").read_text(encoding="utf-8")
+    text = text.replace('["my-app"]', '["my-app", "external-*"]')
+    (Path(isolated_env["config_dir"]) / "config.toml").write_text(text, encoding="utf-8")
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("done"))
+    paths = sorted(request["path"] for request in webhook_server.requests)
+    assert paths == ["/app", "/infra"]
+    app = next(request for request in webhook_server.requests if request["path"] == "/app")
+    assert app["headers"]["authorization"] == "Bearer app"
+
+
+def test_out_of_scope_instances_do_not_start_the_cooldown(isolated_env, webhook_server, monkeypatch):
+    two_bots_config(isolated_env["config_dir"], webhook_server)
+    text = (Path(isolated_env["config_dir"]) / "config.toml").read_text(encoding="utf-8")
+    text = text.replace('["external-*"]', '["elsewhere"]')
+    (Path(isolated_env["config_dir"]) / "config.toml").write_text(text, encoding="utf-8")
+    send_event(monkeypatch, "pane.agent_status_changed", status_event("done"))
+    assert webhook_server.requests == []
+    assert state_mod.State().pane("wD:p1").get("last_notified") in (None, {})
+
+
+def test_test_and_status_use_instance_names(isolated_env, webhook_server, capsys):
+    two_bots_config(isolated_env["config_dir"], webhook_server)
+    assert cli.main(["test", "bot_app"]) == 0
+    assert [request["path"] for request in webhook_server.requests] == ["/app"]
+    assert cli.main(["test", "generic"]) == 0
+    assert len(webhook_server.requests) == 3
+    assert cli.main(["test", "nope"]) == 2
+
+    cli.main(["status"])
+    output = capsys.readouterr().out
+    assert "bot_app (Generic HTTP) type=generic" in output
+    assert "include_workspaces=[my-app]" in output
+
+    cli.main(["preview", "bot_infra"])
+    output = capsys.readouterr().out
+    assert "bot_infra: POST" in output and "type: generic" in output
+    assert "bot_app" not in output

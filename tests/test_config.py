@@ -65,7 +65,7 @@ def test_missing_env_variable_is_reported(tmp_path):
 
 def test_unknown_provider_is_rejected(tmp_path):
     path = write(tmp_path, "[providers.nope]\nenabled = true\n")
-    with pytest.raises(config_mod.ConfigError, match="unknown provider"):
+    with pytest.raises(config_mod.ConfigError, match='unknown provider .*set type = "generic"'):
         config_mod.load(str(path))
 
 
@@ -172,3 +172,53 @@ def test_provider_timeout_must_be_a_positive_number(tmp_path):
     )
     with pytest.raises(config_mod.ConfigError, match="timeout_seconds"):
         config_mod.load(str(path))
+
+
+def test_named_provider_instances_share_a_type(tmp_path):
+    path = write(
+        tmp_path,
+        """
+        [providers.bot_app]
+        type = "generic"
+        enabled = true
+        url = "https://example.com/app"
+        include_workspaces = ["my-app"]
+
+        [providers.bot_infra]
+        type = "generic"
+        enabled = true
+        url = "https://example.com/infra"
+        exclude_workspaces = "scratch*"
+        """,
+    )
+    cfg = config_mod.load(str(path))
+    assert cfg.enabled == ["bot_app", "bot_infra"]
+    assert cfg.unknown_keys == []
+    assert cfg.provider_module("bot_app").NAME == "generic"
+    assert cfg.providers["bot_app"]["include_workspaces"] == ["my-app"]
+    assert cfg.providers["bot_infra"]["exclude_workspaces"] == ["scratch*"]
+    assert cfg.providers["bot_infra"]["include_workspaces"] == []
+
+
+def test_provider_type_defaults_to_the_table_name(tmp_path):
+    path = write(tmp_path, '[providers.generic]\nenabled = true\nurl = "https://example.com"\n')
+    cfg = config_mod.load(str(path))
+    assert cfg.providers["generic"]["type"] == "generic"
+    assert cfg.provider_module("generic").NAME == "generic"
+
+
+def test_unknown_provider_type_is_rejected(tmp_path):
+    path = write(tmp_path, '[providers.bot]\ntype = "chatbot"\nenabled = false\n')
+    with pytest.raises(config_mod.ConfigError, match="providers.bot: unknown type 'chatbot'"):
+        config_mod.load(str(path))
+
+
+def test_named_instance_validation_names_the_instance(tmp_path):
+    path = write(tmp_path, '[providers.bot]\ntype = "generic"\nenabled = true\n')
+    with pytest.raises(config_mod.ConfigError, match="providers.bot: generic: missing"):
+        config_mod.load(str(path))
+
+
+def test_named_instance_typo_is_reported_against_its_type(tmp_path):
+    path = write(tmp_path, '[providers.bot]\ntype = "generic"\nenabled = false\nurll = "x"\n')
+    assert any("providers.bot.urll" in key and "url" in key for key in config_mod.load(str(path)).unknown_keys)

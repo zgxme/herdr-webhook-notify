@@ -183,15 +183,18 @@ events = ["blocked"]                 # 可单独覆盖事件范围
 
 ### `[providers.<名字>]` 服务商
 
-所有服务商都支持这三个键：
+所有服务商都支持这些键：
 
 | 配置项 | 类型 | 默认值 | 含义 |
 | --- | --- | --- | --- |
+| `type` | 字符串 | 表名 | 这张表用哪个服务商实现。不写时表名就是类型（`[providers.slack]` 即 `slack`）；想同一服务商配多个实例时写上，见下文。 |
 | `enabled` | 布尔 | `false` | 是否启用；未启用的 provider 不会做参数校验。 |
 | `events` | 列表 | 继承全局 | 单独收窄范围，例如 Slack 只收 `["blocked"]`。 |
 | `language` | 字符串 | 继承全局 | 单独指定语言，适合团队里中英混用的场景。 |
 | `timeout_seconds` | 数字 | 继承 `[http]` | 单独设置超时，适合内部网关较慢的情况。 |
 | `retries` | 数字 | 继承 `[http]` | 单独设置重试次数。 |
+| `include_workspaces` / `exclude_workspaces` | 列表 | `[]` | 该 provider 自己的范围，在 `[notify]` 全局过滤之后再套一层；通配规则相同，空列表表示不额外限制。 |
+| `include_tabs` / `exclude_tabs`、`include_agents` / `exclude_agents` | 列表 | `[]` | 同上，作用于标签页和 agent。 |
 
 | 服务商 | 必填 | 可选 |
 | --- | --- | --- |
@@ -208,6 +211,33 @@ events = ["blocked"]                 # 可单独覆盖事件范围
 | `generic` | `url` | `method`（`POST`/`PUT`/`PATCH`）、`headers`、`body`（模板）、`content_type`、`flavor`（`markdown`/`slack`/`plain`） |
 
 各服务商怎么申请 webhook 见 [docs/providers.md](docs/providers.md)。
+
+#### 同一服务商配多个 webhook（命名实例）
+
+表名可以是任意实例名，只要用 `type` 指明是哪个服务商。每个启用的实例都会收到
+通知，各自有独立的 URL、headers、body 和范围。例如两个聊天机器人 webhook（如 Grok Bot），各管自己的 workspace：
+
+```toml
+[providers.bot_app]
+type = "generic"
+enabled = true
+url = "${APP_BOT_WEBHOOK_URL}"
+headers = { Authorization = "${APP_BOT_WEBHOOK_AUTH}" }
+include_workspaces = ["my-app"]
+body = """{"source":"herdr-webhook-notify","status":"{status}","kind":"{kind}","workspace":"{workspace}","task":"{task}","duration":"{duration}"}"""
+
+[providers.bot_infra]
+type = "generic"
+enabled = true
+url = "${INFRA_BOT_WEBHOOK_URL}"
+headers = { Authorization = "${INFRA_BOT_WEBHOOK_AUTH}" }
+include_workspaces = ["infra-*"]
+body = """{"source":"herdr-webhook-notify","status":"{status}","kind":"{kind}","workspace":"{workspace}","task":"{task}","duration":"{duration}"}"""
+```
+
+`test`、`preview`、`status` 都按实例名工作（`test bot_infra`）；传类型名
+（`test generic`）则选中该类型的所有实例。`test` 不受 provider 级范围限制，在哪个
+workspace 都能测试任意实例。
 
 ### 可用占位符
 
